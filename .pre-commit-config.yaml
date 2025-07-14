@@ -1,6 +1,14 @@
 ---
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+
+ci:
+  autoupdate_commit_msg: 'pre-commit: autoupdate'
+  autoupdate_schedule: weekly
+  autofix_prs: false
+  # Skip hooks that have issues in pre-commit CI environment
+  skip: [pylint, yamllint]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
