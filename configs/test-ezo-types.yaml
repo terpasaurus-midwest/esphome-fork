@@ -1,0 +1,78 @@
+esphome:
+  name: test-ezo-types
+  friendly_name: Test EZO Types
+
+esp32:
+  board: featheresp32
+  framework:
+    type: arduino
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+logger:
+  level: DEBUG
+
+wifi:
+  ssid: "test_ssid"
+  password: "test_password"
+
+web_server:
+  port: 80
+
+i2c:
+  sda: 23
+  scl: 22
+  scan: true
+
+text_sensor:
+
+sensor:
+  - platform: ezo_types
+    type: ph
+    id: ph_sensor
+    name: "pH"
+    address: 99
+    update_interval: 5s
+    voltage:
+      name: "pH Voltage"
+    reset_reason:
+      name: "pH Reset Reason"
+
+  - platform: ezo_types
+    type: ec
+    id: ec_sensor
+    name: "EC"
+    address: 100
+    update_interval: 5s
+    output_tds_enabled: true
+    voltage:
+      name: "EC Voltage"
+    reset_reason:
+      name: "EC Reset Reason"
+    tds:
+      name: "TDS"
+
+  - platform: ezo_types
+    type: rtd
+    id: rtd_sensor
+    name: "Temperature"
+    address: 102
+    update_interval: 5s
+    voltage:
+      name: "RTD Voltage"
+    reset_reason:
+      name: "RTD Reset Reason"
+
+  - platform: ezo_types
+    type: orp
+    id: orp_sensor
+    name: "ORP"
+    address: 98
+    update_interval: 5s
+    voltage:
+      name: "ORP Voltage"
+    reset_reason:
+      name: "ORP Reset Reason"
