@@ -1,0 +1,471 @@
+substitutions:
+  devicename: grow-tent-monitor
+  hostname: grow-tent-monitor
+  friendlyname: "Grow Tent Monitor"
+  board: esp32-s3-devkitc-1
+  framework_type: arduino
+  api_encryption_key: !secret api_encryption_key
+  ota_password: !secret ota_update_key
+
+esphome:
+  name: ${hostname}
+  friendly_name: ${friendlyname}
+  platformio_options:
+    board_build.flash_mode: dio
+    board_build.mcu: esp32s3
+    board_build.f_cpu: 240000000L
+  libraries:
+    - m5stack/M5Unified
+
+external_components:
+  - source:
+      type: local
+      path: ../my_components
+
+board_m5cores3:
+  id: m5_board
+
+m5cores3_power:
+  id: m5_power
+  battery_sensor:
+    name: "Battery Level"
+    id: battery_level
+  battery_present_sensor:
+    name: "Battery Present"
+    id: battery_present
+  battery_charging_sensor:
+    name: "Battery Charging"
+    id: battery_charging
+
+esp32:
+  board: ${board}
+  flash_size: 16MB
+  framework:
+    type: ${framework_type}
+
+logger:
+
+api:
+  encryption:
+    key: "${api_encryption_key}"
+  actions:
+    - action: calibrate_co2_value
+      variables:
+        co2_ppm: int
+      then:
+        - scd4x.perform_forced_calibration:
+            value: !lambda "return co2_ppm;"
+            id: scd41_sensor
+    - action: factory_reset_co2
+      then:
+        - scd4x.factory_reset: scd41_sensor
+
+ota:
+  - platform: esphome
+    password: "${ota_password}"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  passive_scan: false
+  power_save_mode: none
+  ap:
+    ssid: "Grow-Tent-Monitor"
+    password: !secret fallback_hotspot_key
+
+captive_portal:
+web_server:
+  port: 80
+
+i2c:
+  sda: 2
+  scl: 1
+  scan: true
+  id: i2c_external
+
+# Time synchronization with HA
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+globals:
+  - id: co2_high_threshold
+    type: float
+    initial_value: "1500"
+  - id: co2_low_threshold
+    type: float
+    initial_value: "800"
+  - id: temp_high_threshold
+    type: float
+    initial_value: "30.0"
+  - id: temp_low_threshold
+    type: float
+    initial_value: "18.0"
+  - id: humidity_high_threshold
+    type: float
+    initial_value: "70.0"
+
+number:
+  - platform: template
+    name: "CO2 High Threshold"
+    id: co2_high_input
+    optimistic: true
+    min_value: 500
+    max_value: 2000
+    step: 50
+    initial_value: 1500
+    unit_of_measurement: "ppm"
+    icon: "mdi:molecule-co2"
+    on_value:
+      then:
+        - globals.set:
+            id: co2_high_threshold
+            value: !lambda "return x;"
+
+  - platform: template
+    name: "CO2 Low Threshold"
+    id: co2_low_input
+    optimistic: true
+    min_value: 400
+    max_value: 1000
+    step: 50
+    initial_value: 800
+    unit_of_measurement: "ppm"
+    icon: "mdi:molecule-co2"
+    on_value:
+      then:
+        - globals.set:
+            id: co2_low_threshold
+            value: !lambda "return x;"
+
+  - platform: template
+    name: "Temperature High Threshold"
+    id: temp_high_input
+    optimistic: true
+    min_value: 20
+    max_value: 40
+    step: 1
+    initial_value: 30
+    unit_of_measurement: "°C"
+    icon: "mdi:thermometer"
+    on_value:
+      then:
+        - globals.set:
+            id: temp_high_threshold
+            value: !lambda "return x;"
+
+  - platform: template
+    name: "Temperature Low Threshold"
+    id: temp_low_input
+    optimistic: true
+    min_value: 10
+    max_value: 25
+    step: 1
+    initial_value: 18
+    unit_of_measurement: "°C"
+    icon: "mdi:thermometer"
+    on_value:
+      then:
+        - globals.set:
+            id: temp_low_threshold
+            value: !lambda "return x;"
+
+sensor:
+  # Core environmental sensors (SCD41 on I2C Port A on the Core S3)
+  - platform: scd4x
+    i2c_id: i2c_external
+    id: scd41_sensor
+    # Taking the device outside in fresh air is necessary to calibrate
+    # so self calibration has to be disabled.
+    automatic_self_calibration: false
+    # Set to the sensor's altitude in meters
+    # ambient_pressure_compensation_source can be set to a barometer sensor
+    # if this is the case, the altitude compensation will be ignored
+    altitude_compensation: 620m
+    co2:
+      name: "CO2"
+      id: co2_sensor
+      unit_of_measurement: "ppm"
+      accuracy_decimals: 0
+    temperature:
+      name: "Temperature"
+      id: temperature_sensor
+      unit_of_measurement: "°C"
+      accuracy_decimals: 2
+    humidity:
+      name: "Humidity"
+      id: humidity_sensor
+      unit_of_measurement: "%"
+      accuracy_decimals: 2
+    update_interval: 6s
+
+  # Light sensor (Port B on M5Stack Core S3) - TEMPORARILY DISABLED due to ADC driver conflict
+  # # Analog output - raw light intensity
+  # - platform: adc
+  #   pin: 8 # Port B analog pin on M5Stack Core S3
+  #   name: "Light Intensity Raw"
+  #   id: light_sensor_raw
+  #   unit_of_measurement: "V"
+  #   accuracy_decimals: 3
+  #   update_interval: 5s
+
+  # VPD Calculation (Critical for plant health)
+  - platform: template
+    name: "VPD"
+    id: vpd_sensor
+    unit_of_measurement: "kPa"
+    accuracy_decimals: 2
+    icon: "mdi:water-percent"
+    lambda: |-
+      if (!id(temperature_sensor).has_state() || !id(humidity_sensor).has_state()) {
+        return NAN;
+      }
+      float temp = id(temperature_sensor).state;
+      float humidity = id(humidity_sensor).state;
+      // Saturation vapor pressure calculation
+      float svp = 0.61078 * exp((17.27 * temp) / (temp + 237.3));
+      // Vapor pressure deficit
+      float vpd = svp * (1.0 - (humidity / 100.0));
+      return vpd;
+    update_interval: 6s
+
+  # Daily statistics tracking
+  - platform: template
+    name: "Daily Max CO2"
+    id: daily_max_co2
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 0
+    lambda: |-
+      static float daily_max = 0;
+      if (!id(co2_sensor).has_state()) {
+        return NAN;
+      }
+      if (id(co2_sensor).state > daily_max) {
+        daily_max = id(co2_sensor).state;
+      }
+      // Reset at midnight
+      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
+        daily_max = 0;
+      }
+      return daily_max;
+    update_interval: 60s
+
+  - platform: template
+    name: "Daily Min Temperature"
+    id: daily_min_temp
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    lambda: |-
+      static float daily_min = 100;
+      if (!id(temperature_sensor).has_state()) {
+        return NAN;
+      }
+      if (id(temperature_sensor).state < daily_min) {
+        daily_min = id(temperature_sensor).state;
+      }
+      // Reset at midnight
+      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
+        daily_min = 100;
+      }
+      return daily_min;
+    update_interval: 60s
+
+  - platform: template
+    name: "Daily Max Temperature"
+    id: daily_max_temp
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    lambda: |-
+      static float daily_max = 0;
+      if (!id(temperature_sensor).has_state()) {
+        return NAN;
+      }
+      if (id(temperature_sensor).state > daily_max) {
+        daily_max = id(temperature_sensor).state;
+      }
+      // Reset at midnight
+      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
+        daily_max = 0;
+      }
+      return daily_max;
+    update_interval: 60s
+
+  # Moving averages for stability
+  - platform: template
+    name: "CO2 Moving Average"
+    id: co2_moving_avg
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 0
+    lambda: |-
+      if (!id(co2_sensor).has_state()) {
+        return NAN;
+      }
+      static float values[12] = {0};  // 1 minute average (12 * 5s)
+      static int index = 0;
+      values[index] = id(co2_sensor).state;
+      index = (index + 1) % 12;
+      float sum = 0;
+      for (int i = 0; i < 12; i++) {
+        sum += values[i];
+      }
+      return sum / 12;
+    update_interval: 6s
+
+  - platform: template
+    name: "Temperature Moving Average"
+    id: temp_moving_avg
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    lambda: |-
+      if (!id(temperature_sensor).has_state()) {
+        return NAN;
+      }
+      static float values[12] = {0};  // 1 minute average
+      static int index = 0;
+      values[index] = id(temperature_sensor).state;
+      index = (index + 1) % 12;
+      float sum = 0;
+      for (int i = 0; i < 12; i++) {
+        sum += values[i];
+      }
+      return sum / 12;
+    update_interval: 6s
+
+  # System monitoring
+  - platform: uptime
+    name: "Uptime"
+    id: uptime_sensor
+    update_interval: 60s
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+# Alert system with configurable thresholds
+binary_sensor:
+  - platform: template
+    name: "CO2 High Alert"
+    id: co2_high_alert
+    lambda: |-
+      return id(co2_sensor).state > id(co2_high_threshold);
+    filters:
+      - delayed_on: 30s # Avoid false alarms
+      - delayed_off: 60s
+
+  - platform: template
+    name: "CO2 Low Alert"
+    id: co2_low_alert
+    lambda: |-
+      return id(co2_sensor).state < id(co2_low_threshold);
+    filters:
+      - delayed_on: 30s
+      - delayed_off: 60s
+
+  - platform: template
+    name: "Temperature High Alert"
+    id: temp_high_alert
+    lambda: |-
+      return id(temperature_sensor).state > id(temp_high_threshold);
+    filters:
+      - delayed_on: 60s
+      - delayed_off: 120s
+
+  - platform: template
+    name: "Temperature Low Alert"
+    id: temp_low_alert
+    lambda: |-
+      return id(temperature_sensor).state < id(temp_low_threshold);
+    filters:
+      - delayed_on: 60s
+      - delayed_off: 120s
+
+  # VPD alerts (optimal range is typically 0.8-1.2 kPa)
+  - platform: template
+    name: "VPD High Alert"
+    id: vpd_high_alert
+    lambda: |-
+      return id(vpd_sensor).state > 1.5;
+    filters:
+      - delayed_on: 60s
+      - delayed_off: 120s
+
+  - platform: template
+    name: "VPD Low Alert"
+    id: vpd_low_alert
+    lambda: |-
+      return id(vpd_sensor).state < 0.4;
+    filters:
+      - delayed_on: 60s
+      - delayed_off: 120s
+
+  # Light validation - hardware detection only
+  - platform: gpio
+    pin:
+      number: 9 # Port B digital pin on M5Stack Core S3
+      mode: INPUT_PULLUP
+    name: "Grow Light On"
+    id: grow_light_on
+    filters:
+      - delayed_on: 5s # Debounce for startup
+      - delayed_off: 10s # Debounce for shutdown
+
+  # Grow light switch status from Home Assistant
+  - platform: homeassistant
+    name: "Grow Light Switch"
+    id: grow_light_switch
+    entity_id: switch.spider_farmer_sf600
+
+  # Light validation alert - triggers when lights should be on but aren't
+  - platform: template
+    name: "Light Validation Alert"
+    id: light_validation_alert
+    lambda: |-
+      return id(grow_light_switch).state && !id(grow_light_on).state;
+    filters:
+      - delayed_on: 60s # wait a minute before checking to avoid false positives
+      - delayed_off: 60s
+
+# Control buttons
+button:
+  - platform: restart
+    name: "Restart"
+
+  - platform: template
+    name: "Calibrate CO2 to Outdoor Level"
+    on_press:
+      - scd4x.perform_forced_calibration:
+          value: 426 # Current outdoor CO2 level
+          id: scd41_sensor
+
+  - platform: template
+    name: "Factory Reset CO2 Sensor"
+    on_press:
+      - scd4x.factory_reset: scd41_sensor
+
+  - platform: template
+    name: "Log AXP2101 Diagnostics"
+    on_press:
+      - m5cores3_power.log_axp2101_diagnostics:
+          component_id: m5_power
+
+# Status reporting
+text_sensor:
+  - platform: template
+    name: "System Status"
+    id: system_status
+    lambda: |-
+      std::string status = "Normal";
+      if (id(co2_high_alert).state || id(co2_low_alert).state ||
+          id(temp_high_alert).state || id(temp_low_alert).state ||
+          id(vpd_high_alert).state || id(vpd_low_alert).state) {
+        status = "Alert";
+      }
+      return status;
+    update_interval: 10s
+
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    mac_address:
+      name: "MAC Address"
