@@ -14,51 +14,29 @@ esphome:
     board_build.flash_mode: dio
     board_build.mcu: esp32s3
     board_build.f_cpu: 240000000L
+    build_flags:
+      - -DUNIT_MLX90614_DISABLE
+      - -DCONFIG_LITTLEFS_SPIFFS_COMPAT=1
+      - -Wl,--allow-multiple-definition
+      - -Wl,--no-warn-rwx-segments
+      - -Wl,--defsym,ets_printf=printf
   libraries:
     - m5stack/M5Unified
+    - m5stack/M5Utility@0.0.3
     - m5stack/M5GFX
     - Wire
-    - SPI
-    - WiFi
 
 external_components:
   - source:
       type: local
       path: ../my_components
-
-board_m5cores3:
-  id: m5_board
-
-m5cores3_power:
-  id: m5_power
-  battery_sensor:
-    name: "Battery Level"
-    id: battery_level
-  battery_present_sensor:
-    name: "Battery Present"
-    id: battery_present
-  battery_charging_sensor:
-    name: "Battery Charging"
-    id: battery_charging
-
-m5unit_co2l:
-  id: co2l_sensor
-  co2:
-    name: "CO2"
-    id: co2_sensor
-  temperature:
-    name: "Temperature"
-    id: temperature_sensor
-  humidity:
-    name: "Humidity"
-    id: humidity_sensor
-  vpd:
-    name: "VPD"
-    id: vpd_sensor
-
-m5cores3_display:
-  id: my_display
-  co2l_component: co2l_sensor
+    components:
+      - grow_env_monitor
+      - m5cores3_display
+      - board_m5cores3
+      - m5cores3_power
+      - scd4x_stats
+      - scd4x_alerts
 
 esp32:
   board: ${board}
@@ -67,23 +45,14 @@ esp32:
     type: ${framework_type}
 
 logger:
-  level: VERY_VERBOSE
+  level: WARN
+
+debug:
+  update_interval: 30s
 
 api:
   encryption:
     key: "${api_encryption_key}"
-  actions:
-    - action: calibrate_co2_value
-      variables:
-        co2_ppm: int
-      then:
-        - m5unit_co2l.perform_forced_calibration:
-            id: co2l_sensor
-            target_ppm: !lambda "return co2_ppm;"
-    - action: factory_reset_co2
-      then:
-        - m5unit_co2l.factory_reset:
-            id: co2l_sensor
 
 ota:
   - platform: esphome
@@ -101,288 +70,391 @@ wifi:
 
 captive_portal:
 web_server:
+  version: 3
   port: 80
+  sorting_groups:
+    - id: environmental_monitoring
+      name: "Environmental Monitoring"
+      sorting_weight: 10
+    - id: thermal_camera
+      name: "Thermal Camera"
+      sorting_weight: 20
+    - id: environmental_alerts
+      name: "Environmental Alerts"
+      sorting_weight: 30
+    - id: diagnostics
+      name: "Diagnostics"
+      sorting_weight: 40
 
-# I2C configuration now handled by M5Unit CO2L component
+i2c:
+  sda: 2
+  scl: 1
+  scan: true
 
 # Time synchronization with HA
 time:
   - platform: homeassistant
     id: homeassistant_time
 
-globals:
-  - id: co2_high_threshold
-    type: float
-    initial_value: "1500"
-  - id: co2_low_threshold
-    type: float
-    initial_value: "800"
-  - id: temp_high_threshold
-    type: float
-    initial_value: "30.0"
-  - id: temp_low_threshold
-    type: float
-    initial_value: "18.0"
-  - id: humidity_high_threshold
-    type: float
-    initial_value: "70.0"
+globals: []
 
-number:
-  - platform: template
-    name: "CO2 High Threshold"
-    id: co2_high_input
-    optimistic: true
-    min_value: 500
-    max_value: 2000
-    step: 50
-    initial_value: 1500
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
-    on_value:
-      then:
-        - globals.set:
-            id: co2_high_threshold
-            value: !lambda "return x;"
+# M5 Stack Hardware Support
+board_m5cores3:
+  id: m5_board
 
-  - platform: template
-    name: "CO2 Low Threshold"
-    id: co2_low_input
-    optimistic: true
-    min_value: 400
-    max_value: 1000
-    step: 50
-    initial_value: 800
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
-    on_value:
-      then:
-        - globals.set:
-            id: co2_low_threshold
-            value: !lambda "return x;"
+m5cores3_power:
+  id: m5_power
+  battery_sensor:
+    name: "Battery Level"
+    id: battery_level
+  battery_present_sensor:
+    name: "Battery Present"
+    id: battery_present
+  battery_charging_sensor:
+    name: "Battery Charging"
+    id: battery_charging
 
-  - platform: template
-    name: "Temperature High Threshold"
-    id: temp_high_input
-    optimistic: true
-    min_value: 20
-    max_value: 40
-    step: 1
-    initial_value: 30
-    unit_of_measurement: "°C"
-    icon: "mdi:thermometer"
-    on_value:
-      then:
-        - globals.set:
-            id: temp_high_threshold
-            value: !lambda "return x;"
-
-  - platform: template
-    name: "Temperature Low Threshold"
-    id: temp_low_input
-    optimistic: true
-    min_value: 10
-    max_value: 25
-    step: 1
-    initial_value: 18
-    unit_of_measurement: "°C"
-    icon: "mdi:thermometer"
-    on_value:
-      then:
-        - globals.set:
-            id: temp_low_threshold
-            value: !lambda "return x;"
+grow_env_monitor:
+  id: grow_monitor
+  display_brightness: 70
+  display_rotation: 3
+  thermal_camera:
+    thermal_refresh_rate: "16Hz" # Higher performance testing
+    thermal_resolution: "18-bit" # Good balance of precision/speed
+    thermal_pattern: "chess" # Better for even temperature distribution
+    thermal_palette: "ironblack" # Most intuitive color mapping
+    thermal_single_frame: true
+  sensors:
+    co2: co2_sensor
+    temperature: temperature_sensor
+    humidity: humidity_sensor
+    thermal_min: mlx_min_temp
+    thermal_max: mlx_max_temp
+    thermal_avg: mlx_mean_temp
+    light_sensor: grow_light_on
+# End M5 Stack Hardware Support
 
 sensor:
-  # Core environmental sensors now handled by M5Unit CO2L component
+  - platform: scd4x
+    id: co2_component
+    co2:
+      name: "CO2"
+      id: co2_sensor
+      web_server:
+        sorting_group_id: environmental_monitoring
+        sorting_weight: 10
+    temperature:
+      name: "Temperature"
+      id: temperature_sensor
+      web_server:
+        sorting_group_id: environmental_monitoring
+        sorting_weight: 20
+    humidity:
+      name: "Humidity"
+      id: humidity_sensor
+      web_server:
+        sorting_group_id: environmental_monitoring
+        sorting_weight: 30
 
-  # Light sensor (Port B on M5Stack Core S3) - TEMPORARILY DISABLED due to ADC driver conflict
-  # # Analog output - raw light intensity
-  # - platform: adc
-  #   pin: 8 # Port B analog pin on M5Stack Core S3
-  #   name: "Light Intensity Raw"
-  #   id: light_sensor_raw
-  #   unit_of_measurement: "V"
-  #   accuracy_decimals: 3
-  #   update_interval: 5s
-
-  # VPD Calculation now handled by M5Unit CO2L component
-
-  # Daily statistics tracking
-  - platform: template
-    name: "Daily Max CO2"
-    id: daily_max_co2
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 0
-    lambda: |-
-      static float daily_max = 0;
-      if (!id(co2_sensor).has_state()) {
-        return NAN;
-      }
-      if (id(co2_sensor).state > daily_max) {
-        daily_max = id(co2_sensor).state;
-      }
-      // Reset at midnight
-      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
-        daily_max = 0;
-      }
-      return daily_max;
-    update_interval: 60s
-
-  - platform: template
-    name: "Daily Min Temperature"
-    id: daily_min_temp
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-    lambda: |-
-      static float daily_min = 100;
-      if (!id(temperature_sensor).has_state()) {
-        return NAN;
-      }
-      if (id(temperature_sensor).state < daily_min) {
-        daily_min = id(temperature_sensor).state;
-      }
-      // Reset at midnight
-      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
-        daily_min = 100;
-      }
-      return daily_min;
-    update_interval: 60s
-
-  - platform: template
-    name: "Daily Max Temperature"
-    id: daily_max_temp
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-    lambda: |-
-      static float daily_max = 0;
-      if (!id(temperature_sensor).has_state()) {
-        return NAN;
-      }
-      if (id(temperature_sensor).state > daily_max) {
-        daily_max = id(temperature_sensor).state;
-      }
-      // Reset at midnight
-      if (id(homeassistant_time).now().hour == 0 && id(homeassistant_time).now().minute == 0) {
-        daily_max = 0;
-      }
-      return daily_max;
-    update_interval: 60s
-
-  # Moving averages for stability
-  - platform: template
-    name: "CO2 Moving Average"
-    id: co2_moving_avg
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 0
-    lambda: |-
-      if (!id(co2_sensor).has_state()) {
-        return NAN;
-      }
-      static float values[12] = {0};  // 1 minute average (12 * 5s)
-      static int index = 0;
-      values[index] = id(co2_sensor).state;
-      index = (index + 1) % 12;
-      float sum = 0;
-      for (int i = 0; i < 12; i++) {
-        sum += values[i];
-      }
-      return sum / 12;
-    update_interval: 6s
-
-  - platform: template
-    name: "Temperature Moving Average"
-    id: temp_moving_avg
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-    lambda: |-
-      if (!id(temperature_sensor).has_state()) {
-        return NAN;
-      }
-      static float values[12] = {0};  // 1 minute average
-      static int index = 0;
-      values[index] = id(temperature_sensor).state;
-      index = (index + 1) % 12;
-      float sum = 0;
-      for (int i = 0; i < 12; i++) {
-        sum += values[i];
-      }
-      return sum / 12;
-    update_interval: 6s
+  # MLX90640 Thermal Camera - real sensors are defined below as mlx_min_temp, mlx_max_temp, mlx_mean_temp
 
   # System monitoring
   - platform: uptime
     name: "Uptime"
     id: uptime_sensor
     update_interval: 60s
+    web_server:
+      sorting_group_id: diagnostics
+      sorting_weight: 10
 
   - platform: wifi_signal
     name: "WiFi Signal"
     update_interval: 60s
+    web_server:
+      sorting_group_id: diagnostics
+      sorting_weight: 20
 
-# Alert system with configurable thresholds
-binary_sensor:
+  # Debug/Performance monitoring
+  - platform: debug
+    free:
+      name: "Free Memory"
+      web_server:
+        sorting_group_id: diagnostics
+        sorting_weight: 30
+    block:
+      name: "Heap Block Size"
+      web_server:
+        sorting_group_id: diagnostics
+        sorting_weight: 40
+    loop_time:
+      name: "Loop Time"
+      web_server:
+        sorting_group_id: diagnostics
+        sorting_weight: 50
+
+  # MLX90640 sensors - will be updated by grow_env_monitor component
   - platform: template
+    name: "MLX90640 Min temp"
+    id: mlx_min_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 10
+  - platform: template
+    name: "MLX90640 Max temp"
+    id: mlx_max_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 20
+  - platform: template
+    name: "MLX90640 Mean temp"
+    id: mlx_mean_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 30
+
+scd4x_stats:
+  id: co2_stats
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  time_id: homeassistant_time
+  vpd:
+    name: "VPD"
+    id: vpd_sensor
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 40
+  daily_max_co2:
+    name: "Daily Max CO2"
+    id: daily_max_co2
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 50
+  daily_min_temp:
+    name: "Daily Min Temperature"
+    id: daily_min_temp
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 60
+  daily_max_temp:
+    name: "Daily Max Temperature"
+    id: daily_max_temp
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 70
+  co2_moving_avg:
+    name: "CO2 Moving Average"
+    id: co2_moving_avg
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 80
+  temp_moving_avg:
+    name: "Temperature Moving Average"
+    id: temp_moving_avg
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 90
+
+scd4x_alerts:
+  id: co2_alerts
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd_sensor: vpd_sensor
+  co2_high_threshold: 1500
+  co2_low_threshold: 800
+  temp_high_threshold: 30
+  temp_low_threshold: 18
+  humidity_high_threshold: 70
+  humidity_low_threshold: 40
+  vpd_high_threshold: 1.5
+  vpd_low_threshold: 0.4
+  co2_high_alert:
     name: "CO2 High Alert"
     id: co2_high_alert
-    lambda: |-
-      return id(co2_sensor).state > id(co2_high_threshold);
-    filters:
-      - delayed_on: 30s # Avoid false alarms
-      - delayed_off: 60s
-
-  - platform: template
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 30
+  co2_low_alert:
     name: "CO2 Low Alert"
     id: co2_low_alert
-    lambda: |-
-      return id(co2_sensor).state < id(co2_low_threshold);
-    filters:
-      - delayed_on: 30s
-      - delayed_off: 60s
-
-  - platform: template
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 40
+  temp_high_alert:
     name: "Temperature High Alert"
     id: temp_high_alert
-    lambda: |-
-      return id(temperature_sensor).state > id(temp_high_threshold);
-    filters:
-      - delayed_on: 60s
-      - delayed_off: 120s
-
-  - platform: template
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 50
+  temp_low_alert:
     name: "Temperature Low Alert"
     id: temp_low_alert
-    lambda: |-
-      return id(temperature_sensor).state < id(temp_low_threshold);
-    filters:
-      - delayed_on: 60s
-      - delayed_off: 120s
-
-  # VPD alerts (optimal range is typically 0.8-1.2 kPa)
-  - platform: template
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 60
+  humidity_high_alert:
+    name: "Humidity High Alert"
+    id: humidity_high_alert
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 70
+  humidity_low_alert:
+    name: "Humidity Low Alert"
+    id: humidity_low_alert
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 80
+  vpd_high_alert:
     name: "VPD High Alert"
     id: vpd_high_alert
-    lambda: |-
-      return id(vpd_sensor).state > 1.5;
-    filters:
-      - delayed_on: 60s
-      - delayed_off: 120s
-
-  - platform: template
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 90
+  vpd_low_alert:
     name: "VPD Low Alert"
     id: vpd_low_alert
-    lambda: |-
-      return id(vpd_sensor).state < 0.4;
-    filters:
-      - delayed_on: 60s
-      - delayed_off: 120s
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 100
 
+number:
+  - platform: template
+    name: "CO2 High Threshold"
+    id: co2_high_threshold_number
+    min_value: 500
+    max_value: 2000
+    step: 50
+    initial_value: 1500
+    optimistic: true
+    unit_of_measurement: "ppm"
+    icon: "mdi:molecule-co2"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 10
+  - platform: template
+    name: "CO2 Low Threshold"
+    id: co2_low_threshold_number
+    min_value: 400
+    max_value: 1000
+    step: 50
+    initial_value: 800
+    optimistic: true
+    unit_of_measurement: "ppm"
+    icon: "mdi:molecule-co2"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 20
+  - platform: template
+    name: "Thermal Update Interval"
+    id: thermal_update_interval_number
+    min_value: 100
+    max_value: 30000
+    step: 100
+    initial_value: 20000
+    optimistic: true
+    unit_of_measurement: "ms"
+    icon: "mdi:timer"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 80
+    on_value:
+      - lambda: 'id(grow_monitor).update_thermal_interval(x);'
+
+select:
+  - platform: template
+    name: "Thermal Color Palette"
+    id: thermal_palette_select
+    optimistic: true
+    initial_option: "ironblack"
+    options:
+      - "rainbow"
+      - "golden"
+      - "grayscale"
+      - "ironblack"
+      - "cam"
+      - "ironbow"
+      - "arctic"
+      - "lava"
+      - "whitehot"
+      - "blackhot"
+    icon: "mdi:palette"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 40
+    on_value:
+      - lambda: 'id(grow_monitor).update_thermal_palette(x);'
+  - platform: template
+    name: "Thermal Refresh Rate"
+    id: thermal_refresh_rate_select
+    optimistic: true
+    initial_option: "16Hz"
+    options:
+      - "0.5Hz"
+      - "1Hz"
+      - "2Hz"
+      - "4Hz"
+      - "8Hz"
+      - "16Hz"
+      - "32Hz"
+      - "64Hz"
+    icon: "mdi:camera-timer"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 50
+    on_value:
+      - lambda: 'id(grow_monitor).update_thermal_refresh_rate(x);'
+  - platform: template
+    name: "Thermal Pattern"
+    id: thermal_pattern_select
+    optimistic: true
+    initial_option: "chess"
+    options:
+      - "chess"
+      - "interleaved"
+    icon: "mdi:grid"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 60
+    on_value:
+      - lambda: 'id(grow_monitor).update_thermal_pattern(x);'
+
+switch:
+  - platform: template
+    name: "Thermal Single Frame"
+    id: thermal_single_frame_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:camera-burst"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 70
+    on_turn_on:
+      - lambda: 'id(grow_monitor).update_thermal_single_frame(true);'
+    on_turn_off:
+      - lambda: 'id(grow_monitor).update_thermal_single_frame(false);'
+
+binary_sensor:
   # Light validation - hardware detection only
   - platform: gpio
     pin:
       number: 9 # Port B digital pin on M5Stack Core S3
-      mode: INPUT_PULLUP
+      mode: INPUT_PULLDOWN
+      inverted: true
     name: "Grow Light On"
     id: grow_light_on
+    web_server:
+      sorting_group_id: environmental_monitoring
+      sorting_weight: 35
     filters:
       - delayed_on: 5s # Debounce for startup
       - delayed_off: 10s # Debounce for shutdown
@@ -399,6 +471,9 @@ binary_sensor:
     id: light_validation_alert
     lambda: |-
       return id(grow_light_switch).state && !id(grow_light_on).state;
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 110
     filters:
       - delayed_on: 60s # wait a minute before checking to avoid false positives
       - delayed_off: 60s
@@ -407,27 +482,19 @@ binary_sensor:
 button:
   - platform: restart
     name: "Restart"
-
-  - platform: template
-    name: "Calibrate CO2 to Outdoor Level"
-    on_press:
-      - m5unit_co2l.perform_forced_calibration:
-          id: co2l_sensor
-          target_ppm: 426 # Current outdoor CO2 level
-
-  - platform: template
-    name: "Factory Reset CO2 Sensor"
-    on_press:
-      - m5unit_co2l.factory_reset:
-          id: co2l_sensor
+    web_server:
+      sorting_group_id: diagnostics
+      sorting_weight: 60
 
   - platform: template
     name: "Log AXP2101 Diagnostics"
+    web_server:
+      sorting_group_id: diagnostics
+      sorting_weight: 70
     on_press:
       - m5cores3_power.log_axp2101_diagnostics:
           component_id: m5_power
 
-# Status reporting
 text_sensor:
   - platform: template
     name: "System Status"
@@ -441,9 +508,18 @@ text_sensor:
       }
       return status;
     update_interval: 10s
+    web_server:
+      sorting_group_id: diagnostics
+      sorting_weight: 80
 
   - platform: wifi_info
     ip_address:
       name: "IP Address"
+      web_server:
+        sorting_group_id: diagnostics
+        sorting_weight: 90
     mac_address:
       name: "MAC Address"
+      web_server:
+        sorting_group_id: diagnostics
+        sorting_weight: 100
