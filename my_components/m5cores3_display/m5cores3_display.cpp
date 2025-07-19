@@ -35,13 +35,14 @@ const uint16_t M5CoreS3Display::thermal_colors_[256] = {
 void M5CoreS3Display::setup() {
   ESP_LOGCONFIG(TAG, "Setting up M5CoreS3 Display...");
 
-  display_.begin();
-  display_.setRotation(3);
-  display_.fillScreen(TFT_WHITE);
-  display_.setBrightness(70);
-  display_.setFont(&fonts::Font4);
-  display_.setTextColor(TFT_BLACK);
-  display_.setTextSize(1);
+  // M5.Display is already initialized by board_m5cores3 component
+  // Just configure our display settings
+  M5.Display.setRotation(3);
+  M5.Display.fillScreen(TFT_WHITE);
+  M5.Display.setBrightness(70);
+  M5.Display.setFont(&fonts::Font4);
+  M5.Display.setTextColor(TFT_BLACK);
+  M5.Display.setTextSize(1);
 
   initialized_ = true;
   ESP_LOGCONFIG(TAG, "M5CoreS3 Display setup complete");
@@ -82,17 +83,17 @@ void M5CoreS3Display::loop() {
 
 void M5CoreS3Display::draw_environmental_data_() {
   // Clear the screen
-  display_.fillScreen(TFT_WHITE);
+  M5.Display.fillScreen(TFT_WHITE);
 
   // Set text properties
-  display_.setFont(&fonts::Font4);  // Smaller font to fit more content
-  display_.setTextColor(TFT_BLACK);
-  display_.setTextSize(1);
-  display_.setTextDatum(TL_DATUM);  // Top Left alignment
+  M5.Display.setFont(&fonts::Font4);  // Smaller font to fit more content
+  M5.Display.setTextColor(TFT_BLACK);
+  M5.Display.setTextSize(1);
+  M5.Display.setTextDatum(TL_DATUM);  // Top Left alignment
 
   int y_pos = 10;
-  int line_height = display_.fontHeight() + 8;      // Compact spacing between sections
-  int label_value_gap = display_.fontHeight() + 1;  // Minimal gap between label and value
+  int line_height = M5.Display.fontHeight() + 8;      // Compact spacing between sections
+  int label_value_gap = M5.Display.fontHeight() + 1;  // Minimal gap between label and value
 
   // Get data from CO2L component if available
   if (co2l_component_ != nullptr) {
@@ -100,7 +101,7 @@ void M5CoreS3Display::draw_environmental_data_() {
     auto &unit = co2l_component_->unit_;
 
     // CO2 reading - vertical format
-    display_.drawString("CO2", 10, y_pos);
+    M5.Display.drawString("CO2", 10, y_pos);
     y_pos += label_value_gap;
     String co2_value;
     if (unit.updated() || unit.co2() > 0) {
@@ -108,29 +109,29 @@ void M5CoreS3Display::draw_environmental_data_() {
     } else {
       co2_value = "--- ppm";
     }
-    display_.drawString(co2_value, 10, y_pos);
+    M5.Display.drawString(co2_value, 10, y_pos);
     y_pos += line_height;
 
     // Temperature reading - vertical format
-    display_.drawString("Temp", 10, y_pos);
+    M5.Display.drawString("Temp", 10, y_pos);
     y_pos += label_value_gap;
     if (unit.updated() || !isnan(unit.temperature())) {
       String temp_value = String(unit.temperature(), 1);
-      int temp_width = display_.textWidth(temp_value.c_str());
-      display_.drawString(temp_value.c_str(), 10, y_pos);
+      int temp_width = M5.Display.textWidth(temp_value.c_str());
+      M5.Display.drawString(temp_value.c_str(), 10, y_pos);
       // Draw a small circle for degree symbol
-      display_.drawCircle(10 + temp_width + 2, y_pos + 2, 2, TFT_BLACK);
-      display_.drawString("C", 10 + temp_width + 8, y_pos);
+      M5.Display.drawCircle(10 + temp_width + 2, y_pos + 2, 2, TFT_BLACK);
+      M5.Display.drawString("C", 10 + temp_width + 8, y_pos);
     } else {
-      int temp_width = display_.textWidth("---");
-      display_.drawString("---", 10, y_pos);
-      display_.drawCircle(10 + temp_width + 2, y_pos + 2, 2, TFT_BLACK);
-      display_.drawString("C", 10 + temp_width + 8, y_pos);
+      int temp_width = M5.Display.textWidth("---");
+      M5.Display.drawString("---", 10, y_pos);
+      M5.Display.drawCircle(10 + temp_width + 2, y_pos + 2, 2, TFT_BLACK);
+      M5.Display.drawString("C", 10 + temp_width + 8, y_pos);
     }
     y_pos += line_height;
 
     // Humidity reading - vertical format
-    display_.drawString("RH", 10, y_pos);
+    M5.Display.drawString("RH", 10, y_pos);
     y_pos += label_value_gap;
     String hum_value;
     if (unit.updated() || !isnan(unit.humidity())) {
@@ -138,11 +139,11 @@ void M5CoreS3Display::draw_environmental_data_() {
     } else {
       hum_value = "--- %";
     }
-    display_.drawString(hum_value, 10, y_pos);
+    M5.Display.drawString(hum_value, 10, y_pos);
     y_pos += line_height;
 
     // VPD calculation - vertical format
-    display_.drawString("VPD", 10, y_pos);
+    M5.Display.drawString("VPD", 10, y_pos);
     y_pos += label_value_gap;
     String vpd_value;
     if (!isnan(unit.temperature()) && !isnan(unit.humidity())) {
@@ -154,12 +155,12 @@ void M5CoreS3Display::draw_environmental_data_() {
     } else {
       vpd_value = "--- kPa";
     }
-    display_.drawString(vpd_value, 10, y_pos);
+    M5.Display.drawString(vpd_value, 10, y_pos);
 
   } else {
     // No component connected
-    display_.setTextColor(TFT_RED);
-    display_.drawString("No CO2L sensor", 10, y_pos);
+    M5.Display.setTextColor(TFT_RED);
+    M5.Display.drawString("No CO2L sensor", 10, y_pos);
   }
 
   // Draw thermal camera on the right side
@@ -177,10 +178,10 @@ void M5CoreS3Display::draw_thermal_camera_() {
 
   if (thermal_component_ == nullptr) {
     // Draw placeholder if no thermal component
-    display_.setTextColor(TFT_RED);
-    display_.drawRect(thermal_x, thermal_y, scaled_width, scaled_height, TFT_RED);
-    display_.drawString("No Thermal", thermal_x + 10, thermal_y + 40);
-    display_.drawString("Camera", thermal_x + 10, thermal_y + 60);
+    M5.Display.setTextColor(TFT_RED);
+    M5.Display.drawRect(thermal_x, thermal_y, scaled_width, scaled_height, TFT_RED);
+    M5.Display.drawString("No Thermal", thermal_x + 10, thermal_y + 40);
+    M5.Display.drawString("Camera", thermal_x + 10, thermal_y + 60);
     return;
   }
 
@@ -188,10 +189,10 @@ void M5CoreS3Display::draw_thermal_camera_() {
   const float *thermal_pixels = thermal_component_->get_thermal_pixels();
   if (thermal_pixels == nullptr || !thermal_component_->has_valid_data()) {
     // Draw placeholder if no data available
-    display_.setTextColor(TFT_ORANGE);
-    display_.drawRect(thermal_x, thermal_y, scaled_width, scaled_height, TFT_ORANGE);
-    display_.drawString("Thermal", thermal_x + 10, thermal_y + 40);
-    display_.drawString("Loading...", thermal_x + 10, thermal_y + 60);
+    M5.Display.setTextColor(TFT_ORANGE);
+    M5.Display.drawRect(thermal_x, thermal_y, scaled_width, scaled_height, TFT_ORANGE);
+    M5.Display.drawString("Thermal", thermal_x + 10, thermal_y + 40);
+    M5.Display.drawString("Loading...", thermal_x + 10, thermal_y + 60);
     return;
   }
 
@@ -242,25 +243,25 @@ void M5CoreS3Display::draw_thermal_image_(int x, int y, int width, int height) {
 
   // Push the thermal image using DMA for maximum performance
   // Hardware-accelerated transfer: 768 fillRect calls → 1 DMA transfer
-  display_.pushImageDMA(x, y, 32, 24, thermal_image);
+  M5.Display.pushImageDMA(x, y, 32, 24, thermal_image);
 
   // Draw temperature values
-  display_.setTextColor(0xFFFF);  // White text
-  display_.setTextSize(1);
-  display_.setCursor(x + 5, y + 5);
-  display_.print("Low: ");
-  display_.print(min_temp, 1);
-  display_.print("°C");
+  M5.Display.setTextColor(0xFFFF);  // White text
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(x + 5, y + 5);
+  M5.Display.print("Low: ");
+  M5.Display.print(min_temp, 1);
+  M5.Display.print("°C");
 
-  display_.setCursor(x + 5, y + 15);
-  display_.print("High: ");
-  display_.print(max_temp, 1);
-  display_.print("°C");
+  M5.Display.setCursor(x + 5, y + 15);
+  M5.Display.print("High: ");
+  M5.Display.print(max_temp, 1);
+  M5.Display.print("°C");
 
-  display_.setCursor(x + 5, y + 25);
-  display_.print("Avg: ");
-  display_.print(thermal_component_->get_average_temperature(), 1);
-  display_.print("°C");
+  M5.Display.setCursor(x + 5, y + 25);
+  M5.Display.print("Avg: ");
+  M5.Display.print(thermal_component_->get_average_temperature(), 1);
+  M5.Display.print("°C");
 
   ESP_LOGV(TAG, "Thermal image drawn - Range: %.1f°C to %.1f°C", min_temp, max_temp);
 }
@@ -275,8 +276,8 @@ uint16_t M5CoreS3Display::temperature_to_color_(float temperature, float min_tem
 
 void M5CoreS3Display::dump_config() {
   ESP_LOGCONFIG(TAG, "M5CoreS3 Display:");
-  ESP_LOGCONFIG(TAG, "  Width: %d", initialized_ ? display_.width() : 320);
-  ESP_LOGCONFIG(TAG, "  Height: %d", initialized_ ? display_.height() : 240);
+  ESP_LOGCONFIG(TAG, "  Width: %d", initialized_ ? M5.Display.width() : 320);
+  ESP_LOGCONFIG(TAG, "  Height: %d", initialized_ ? M5.Display.height() : 240);
   ESP_LOGCONFIG(TAG, "  CO2L Component: %s", co2l_component_ != nullptr ? "Connected" : "Not connected");
   ESP_LOGCONFIG(TAG, "  Thermal Component: %s", thermal_component_ != nullptr ? "Connected" : "Not connected");
 }

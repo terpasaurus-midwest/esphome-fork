@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include <M5GFX.h>
+#include <M5Unified.h>
 
 // Forward declarations
 namespace esphome {
@@ -33,7 +33,6 @@ class M5CoreS3Display : public Component {
   void draw_thermal_image_(int x, int y, int width, int height);
   uint16_t temperature_to_color_(float temperature, float min_temp, float max_temp);
 
-  M5GFX display_;
   bool initialized_{false};
   m5unit_co2l::M5UnitCO2L *co2l_component_{nullptr};
   mlx90640_thermal::MLX90640Thermal *thermal_component_{nullptr};
