@@ -374,7 +374,7 @@ number:
       sorting_group_id: thermal_camera
       sorting_weight: 80
     on_value:
-      - lambda: 'id(grow_monitor).update_thermal_interval(x);'
+      - lambda: "id(grow_monitor).update_thermal_interval(x);"
 
 select:
   - platform: template
@@ -398,7 +398,7 @@ select:
       sorting_group_id: thermal_camera
       sorting_weight: 40
     on_value:
-      - lambda: 'id(grow_monitor).update_thermal_palette(x);'
+      - lambda: "id(grow_monitor).update_thermal_palette(x);"
   - platform: template
     name: "Thermal Refresh Rate"
     id: thermal_refresh_rate_select
@@ -418,7 +418,7 @@ select:
       sorting_group_id: thermal_camera
       sorting_weight: 50
     on_value:
-      - lambda: 'id(grow_monitor).update_thermal_refresh_rate(x);'
+      - lambda: "id(grow_monitor).update_thermal_refresh_rate(x);"
   - platform: template
     name: "Thermal Pattern"
     id: thermal_pattern_select
@@ -432,7 +432,7 @@ select:
       sorting_group_id: thermal_camera
       sorting_weight: 60
     on_value:
-      - lambda: 'id(grow_monitor).update_thermal_pattern(x);'
+      - lambda: "id(grow_monitor).update_thermal_pattern(x);"
 
 switch:
   - platform: template
@@ -445,9 +445,9 @@ switch:
       sorting_group_id: thermal_camera
       sorting_weight: 70
     on_turn_on:
-      - lambda: 'id(grow_monitor).update_thermal_single_frame(true);'
+      - lambda: "id(grow_monitor).update_thermal_single_frame(true);"
     on_turn_off:
-      - lambda: 'id(grow_monitor).update_thermal_single_frame(false);'
+      - lambda: "id(grow_monitor).update_thermal_single_frame(false);"
 
 binary_sensor:
   # Light validation - hardware detection only
