@@ -423,19 +423,27 @@ void GrowEnvMonitor::update_thermal_data_() {
 
   ESP_LOGD(TAG, "Reading MLX90640 thermal data...");
 
+  // Synchronize frame to ensure fresh data is available
+  int sync_status = MLX90640_SynchFrame(MLX90640_ADDRESS);
+  if (sync_status != 0) {
+    ESP_LOGW(TAG, "MLX90640 frame synchronization failed: %d", sync_status);
+    return;
+  }
+
   // Read frames based on configuration (single frame for motion handling)
   bool frame_read = false;
   int max_frames = thermal_single_frame_ ? 1 : 2;
   int consecutive_failures = 0;
+  int subpages_collected = 0;
 
-  for (byte x = 0; x < max_frames; x++) {  // Read single or both subpages
+  for (byte attempt = 0; attempt < max_frames; attempt++) {
     uint16_t mlx90640Frame[834];
     uint32_t start_time = millis();
     int status = MLX90640_GetFrameData(MLX90640_ADDRESS, mlx90640Frame);
     uint32_t read_time = millis() - start_time;
 
     if (status < 0) {
-      ESP_LOGD(TAG, "MLX90640 GetFrame subpage %d error: %d (took %dms)", x, status, read_time);
+      ESP_LOGD(TAG, "MLX90640 GetFrame attempt %d error: %d (took %dms)", attempt, status, read_time);
       consecutive_failures++;
       if (consecutive_failures > 3) {
         ESP_LOGW(TAG, "MLX90640 consecutive failures, skipping thermal update");
@@ -444,7 +452,9 @@ void GrowEnvMonitor::update_thermal_data_() {
       continue;
     }
 
-    ESP_LOGD(TAG, "MLX90640 frame read successfully on subpage %d (took %dms)", x, read_time);
+    // Get actual subpage number from the frame data
+    int actual_subpage = MLX90640_GetSubPageNumber(mlx90640Frame);
+    ESP_LOGD(TAG, "MLX90640 frame read successfully, actual subpage: %d (took %dms)", actual_subpage, read_time);
 
     // Calculate temperatures using this frame
     float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640_params_);
@@ -463,7 +473,19 @@ void GrowEnvMonitor::update_thermal_data_() {
     interpolate_image_(mlx90640_pixels_, 24, 32, interpolated_pixels_, 48, 64);
 
     frame_read = true;
-    break;  // Successfully read one frame
+    subpages_collected++;
+
+    // For single frame mode, we're done after one successful read
+    if (thermal_single_frame_) {
+      ESP_LOGD(TAG, "Single frame mode: collected subpage %d", actual_subpage);
+      break;
+    }
+
+    // For dual subpage mode, continue collecting until we have both or reach max attempts
+    if (subpages_collected >= 2) {
+      ESP_LOGD(TAG, "Dual subpage mode: collected %d subpages", subpages_collected);
+      break;
+    }
   }
 
   if (!frame_read) {
