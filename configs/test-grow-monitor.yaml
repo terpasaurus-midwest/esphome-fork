@@ -14,17 +14,13 @@ esphome:
     board_build.flash_mode: dio
     board_build.mcu: esp32s3
     board_build.f_cpu: 240000000L
-    build_flags:
-      - -DUNIT_MLX90614_DISABLE
-      - -DCONFIG_LITTLEFS_SPIFFS_COMPAT=1
-      - -Wl,--allow-multiple-definition
-      - -Wl,--no-warn-rwx-segments
-      - -Wl,--defsym,ets_printf=printf
   libraries:
+    - Wire
+    - FS
+    - SPIFFS
     - m5stack/M5Unified
     - m5stack/M5Utility@0.0.3
     - m5stack/M5GFX
-    - Wire
 
 external_components:
   - source:
@@ -33,6 +29,7 @@ external_components:
     components:
       - grow_env_monitor
       - m5cores3_display
+      - m5cores3_touch
       - board_m5cores3
       - m5cores3_power
       - scd4x_stats
@@ -132,6 +129,15 @@ grow_env_monitor:
     thermal_max: mlx_max_temp
     thermal_avg: mlx_mean_temp
     light_sensor: grow_light_on
+# M5 Stack Touch Support
+m5cores3_touch:
+  id: m5_touch
+  on_touch:
+    - logger.log:
+        format: "Touch detected at (%d, %d)"
+        args: ["touch.x", "touch.y"]
+  on_release:
+    - logger.log: "Touch released"
 # End M5 Stack Hardware Support
 
 sensor:
