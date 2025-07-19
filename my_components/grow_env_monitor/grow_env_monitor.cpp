@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include <cmath>
+#include <algorithm>  // For std::sort
 
 namespace esphome {
 namespace grow_env_monitor {
@@ -437,9 +438,8 @@ void GrowEnvMonitor::update_thermal_data_() {
   int subpages_collected = 0;
 
   for (byte attempt = 0; attempt < max_frames; attempt++) {
-    uint16_t mlx90640Frame[834];
     uint32_t start_time = millis();
-    int status = MLX90640_GetFrameData(MLX90640_ADDRESS, mlx90640Frame);
+    int status = MLX90640_GetFrameData(MLX90640_ADDRESS, mlx90640Frame_);  // Use class member
     uint32_t read_time = millis() - start_time;
 
     if (status < 0) {
@@ -452,18 +452,14 @@ void GrowEnvMonitor::update_thermal_data_() {
       continue;
     }
 
-    // Get actual subpage number from the frame data
-    int actual_subpage = MLX90640_GetSubPageNumber(mlx90640Frame);
-    ESP_LOGD(TAG, "MLX90640 frame read successfully, actual subpage: %d (took %dms)", actual_subpage, read_time);
-
     // Calculate temperatures using this frame
-    float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640_params_);
-    float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640_params_);
+    float vdd = MLX90640_GetVdd(mlx90640Frame_, &mlx90640_params_);
+    float Ta = MLX90640_GetTa(mlx90640Frame_, &mlx90640_params_);
     float tr = Ta - TA_SHIFT;
     float emissivity = 0.95;
 
     // Calculate pixel temperatures
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640_params_, emissivity, tr, mlx90640_pixels_);
+    MLX90640_CalculateTo(mlx90640Frame_, &mlx90640_params_, emissivity, tr, mlx90640_pixels_);
 
     // Fix bad pixels using neighboring pixel interpolation
     MLX90640_BadPixelsCorrection(mlx90640_params_.brokenPixels, mlx90640_pixels_, 1, &mlx90640_params_);
@@ -477,7 +473,7 @@ void GrowEnvMonitor::update_thermal_data_() {
 
     // For single frame mode, we're done after one successful read
     if (thermal_single_frame_) {
-      ESP_LOGD(TAG, "Single frame mode: collected subpage %d", actual_subpage);
+      ESP_LOGD(TAG, "Single frame mode: collected 1 subpage");
       break;
     }
 
@@ -500,7 +496,6 @@ void GrowEnvMonitor::update_thermal_data_() {
   float min_temp = mlx90640_pixels_[0];
   float max_temp = mlx90640_pixels_[0];
   float sum_temp = 0;
-  float valid_pixels[768];
   int valid_count = 0;
 
   // Filter out invalid/extreme readings and collect valid data
@@ -508,7 +503,7 @@ void GrowEnvMonitor::update_thermal_data_() {
     float temp = mlx90640_pixels_[i];
     // Filter out obviously bad readings (typical range -40°C to 85°C for MLX90640)
     if (temp > -40.0 && temp < 85.0) {
-      valid_pixels[valid_count++] = temp;
+      valid_pixels_[valid_count++] = temp;  // Use class member array
       if (temp < min_temp)
         min_temp = temp;
       if (temp > max_temp)
@@ -522,18 +517,9 @@ void GrowEnvMonitor::update_thermal_data_() {
     thermal_max_temp_ = max_temp;
     thermal_avg_temp_ = sum_temp / valid_count;
 
-    // Calculate median temperature (like M5 examples)
-    // Sort valid pixels for median calculation
-    for (int i = 0; i < valid_count - 1; i++) {
-      for (int j = i + 1; j < valid_count; j++) {
-        if (valid_pixels[i] > valid_pixels[j]) {
-          float temp = valid_pixels[i];
-          valid_pixels[i] = valid_pixels[j];
-          valid_pixels[j] = temp;
-        }
-      }
-    }
-    thermal_median_temp_ = valid_pixels[valid_count / 2];
+    // Calculate median temperature - use std::sort for O(n log n) instead of O(n²) bubble sort
+    std::sort(valid_pixels_, valid_pixels_ + valid_count);
+    thermal_median_temp_ = valid_pixels_[valid_count / 2];
   } else {
     ESP_LOGW(TAG, "No valid thermal readings - all pixels out of range");
     return;
@@ -894,8 +880,9 @@ uint16_t GrowEnvMonitor::temp_to_color_(float temperature, float min_temp, float
   }
   color_index = (color_index < 0) ? 0 : (color_index > 255) ? 255 : color_index;
 
-  // Use active palette instead of hardcoded rainbow
-  return current_palette_ ? current_palette_[color_index] : thermal_palette_rainbow_[color_index];
+  // Use active palette instead of hardcoded rainbow (read from PROGMEM)
+  return current_palette_ ? pgm_read_word(&current_palette_[color_index])
+                          : pgm_read_word(&thermal_palette_rainbow_[color_index]);
 }
 
 void GrowEnvMonitor::generate_thermal_image_(uint8_t *rgb_buffer) {
@@ -915,21 +902,24 @@ void GrowEnvMonitor::generate_thermal_image_(uint8_t *rgb_buffer) {
   for (int y = 0; y < 48; y++) {
     for (int x = 0; x < 64; x++) {
       int pixel_idx = y * 64 + x;
-      float temperature = interpolated_pixels_[pixel_idx];
+      // Bounds check for array access safety
+      if (pixel_idx >= 0 && pixel_idx < (64 * 48)) {
+        float temperature = interpolated_pixels_[pixel_idx];
 
-      // Get 16-bit color from palette
-      uint16_t color565 = temp_to_color_(temperature, min_temp, max_temp);
+        // Get 16-bit color from palette
+        uint16_t color565 = temp_to_color_(temperature, min_temp, max_temp);
 
-      // Convert RGB565 to RGB888
-      uint8_t r = ((color565 >> 11) & 0x1F) << 3;  // 5 bits -> 8 bits
-      uint8_t g = ((color565 >> 5) & 0x3F) << 2;   // 6 bits -> 8 bits
-      uint8_t b = (color565 & 0x1F) << 3;          // 5 bits -> 8 bits
+        // Convert RGB565 to RGB888
+        uint8_t r = ((color565 >> 11) & 0x1F) << 3;  // 5 bits -> 8 bits
+        uint8_t g = ((color565 >> 5) & 0x3F) << 2;   // 6 bits -> 8 bits
+        uint8_t b = (color565 & 0x1F) << 3;          // 5 bits -> 8 bits
 
-      // Store in RGB buffer
-      int rgb_idx = pixel_idx * 3;
-      rgb_buffer[rgb_idx] = r;
-      rgb_buffer[rgb_idx + 1] = g;
-      rgb_buffer[rgb_idx + 2] = b;
+        // Store in RGB buffer
+        int rgb_idx = pixel_idx * 3;
+        rgb_buffer[rgb_idx] = r;
+        rgb_buffer[rgb_idx + 1] = g;
+        rgb_buffer[rgb_idx + 2] = b;
+      }
     }
   }
 }
@@ -998,22 +988,25 @@ void GrowEnvMonitor::draw_thermal_image_() {
   for (int y = 0; y < 48; y++) {
     for (int x = 0; x < 64; x++) {
       int pixel_idx = y * 64 + x;
-      float temperature = interpolated_pixels_[pixel_idx];
+      // Bounds check for array access safety
+      if (pixel_idx >= 0 && pixel_idx < (64 * 48)) {
+        float temperature = interpolated_pixels_[pixel_idx];
 
-      // Get color from thermal palette
-      uint16_t color = temp_to_color_(temperature, thermal_min_temp_, thermal_max_temp_);
+        // Get color from thermal palette
+        uint16_t color = temp_to_color_(temperature, thermal_min_temp_, thermal_max_temp_);
 
-      // Calculate exact pixel dimensions to fill entire area
-      int draw_x = image_x + (x * image_w / 64);
-      int draw_y = image_y + (y * image_h / 48);
-      int next_x = image_x + ((x + 1) * image_w / 64);
-      int next_y = image_y + ((y + 1) * image_h / 48);
+        // Calculate exact pixel dimensions to fill entire area
+        int draw_x = image_x + (x * image_w / 64);
+        int draw_y = image_y + (y * image_h / 48);
+        int next_x = image_x + ((x + 1) * image_w / 64);
+        int next_y = image_y + ((y + 1) * image_h / 48);
 
-      // Fill rectangle to next pixel boundary to avoid gaps
-      int width = next_x - draw_x;
-      int height = next_y - draw_y;
+        // Fill rectangle to next pixel boundary to avoid gaps
+        int width = next_x - draw_x;
+        int height = next_y - draw_y;
 
-      display_.fillRect(draw_x, draw_y, width, height, color);
+        display_.fillRect(draw_x, draw_y, width, height, color);
+      }
     }
   }
 
@@ -1078,16 +1071,16 @@ void GrowEnvMonitor::interpolate_image_(float *src, uint8_t src_rows, uint8_t sr
   float mu_x = (src_cols - 1.0) / (dest_cols - 1.0);
   float mu_y = (src_rows - 1.0) / (dest_rows - 1.0);
 
-  float adj_2d[16];  // matrix for storing adjacents
+  // Use class member array instead of stack allocation
 
   for (uint8_t y_idx = 0; y_idx < dest_rows; y_idx++) {
     for (uint8_t x_idx = 0; x_idx < dest_cols; x_idx++) {
       float x = x_idx * mu_x;
       float y = y_idx * mu_y;
-      get_adjacents_2d_(src, adj_2d, src_rows, src_cols, x, y);
-      float frac_x = x - (int) x;  // fractional part between points
-      float frac_y = y - (int) y;  // fractional part between points
-      float out = bicubic_interpolate_(adj_2d, frac_x, frac_y);
+      get_adjacents_2d_(src, adj_2d_, src_rows, src_cols, x, y);  // Use class member
+      float frac_x = x - (int) x;                                 // fractional part between points
+      float frac_y = y - (int) y;                                 // fractional part between points
+      float out = bicubic_interpolate_(adj_2d_, frac_x, frac_y);  // Use class member
       set_point_(dest, dest_rows, dest_cols, x_idx, y_idx, out);
     }
   }
