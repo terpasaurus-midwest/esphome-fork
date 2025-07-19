@@ -23,10 +23,10 @@ void MLX90640_I2CInit() {}
 
 // Read a number of words from startAddress. Store into Data array.
 // Returns 0 if successful, -1 if error
-int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned int nWordsRead, uint16_t *data) {
+int MLX90640_I2CRead(uint8_t slaveAddr, uint16_t startAddress, uint16_t nMemAddressRead, uint16_t *data) {
   // Caller passes number of 'unsigned ints to read', increase this to 'bytes
   // to read'
-  uint16_t bytesRemaining = nWordsRead * 2;
+  uint16_t bytesRemaining = nMemAddressRead * 2;
 
   // It doesn't look like sequential read works. Do we need to re-issue the
   // address command each time?
@@ -35,7 +35,7 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
 
   // Setup a series of chunked I2C_BUFFER_LENGTH byte reads
   while (bytesRemaining > 0) {
-    Wire.beginTransmission(_deviceAddress);
+    Wire.beginTransmission(slaveAddr);
     Wire.write(startAddress >> 8);         // MSB
     Wire.write(startAddress & 0xFF);       // LSB
     if (Wire.endTransmission(false) != 0)  // Do not release bus
@@ -48,7 +48,7 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
     if (numberOfBytesToRead > I2C_BUFFER_LENGTH)
       numberOfBytesToRead = I2C_BUFFER_LENGTH;
 
-    Wire.requestFrom((uint8_t) _deviceAddress, numberOfBytesToRead);
+    Wire.requestFrom((uint8_t) slaveAddr, numberOfBytesToRead);
     if (Wire.available()) {
       for (uint16_t x = 0; x < numberOfBytesToRead / 2; x++) {
         // Store data into array
@@ -75,8 +75,8 @@ void MLX90640_I2CFreqSet(int freq) {
 }
 
 // Write two bytes to a two byte address
-int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_t data) {
-  Wire.beginTransmission((uint8_t) _deviceAddress);
+int MLX90640_I2CWrite(uint8_t slaveAddr, uint16_t writeAddress, uint16_t data) {
+  Wire.beginTransmission((uint8_t) slaveAddr);
   Wire.write(writeAddress >> 8);    // MSB
   Wire.write(writeAddress & 0xFF);  // LSB
   Wire.write(data >> 8);            // MSB
@@ -88,11 +88,21 @@ int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_
   }
 
   uint16_t dataCheck;
-  MLX90640_I2CRead(_deviceAddress, writeAddress, 1, &dataCheck);
+  MLX90640_I2CRead(slaveAddr, writeAddress, 1, &dataCheck);
   if (dataCheck != data) {
     // Serial.println("The write request didn't stick");
     return -2;
   }
 
   return (0);  // Success
+}
+
+// General I2C reset - sends 0x06 to address 0x00 to reset all devices on bus
+int MLX90640_I2CGeneralReset(void) {
+  Wire.beginTransmission(0x00);  // General call address
+  Wire.write(0x06);              // Reset command
+  if (Wire.endTransmission() != 0) {
+    return -1;  // NACK occurred
+  }
+  return 0;  // Success
 }
