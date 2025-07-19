@@ -101,23 +101,28 @@ class GrowEnvMonitor : public Component {
   float interpolated_pixels_[64 * 48];  // 2x upscaled thermal data
   bool thermal_initialized_{false};
 
+  // Large buffers moved from stack to prevent overflow
+  uint16_t mlx90640Frame_[834];  // MLX90640 frame buffer (1,668 bytes)
+  float valid_pixels_[768];      // Valid pixel buffer for sorting (3,072 bytes)
+  float adj_2d_[16];             // Adjacent matrix for interpolation (64 bytes)
+
   // Thermal temperature data
   float thermal_min_temp_{20.0};
   float thermal_max_temp_{30.0};
   float thermal_avg_temp_{25.0};
   float thermal_median_temp_{25.0};
 
-  // Thermal image generation and configuration
-  static const uint16_t thermal_palette_rainbow_[256];
-  static const uint16_t thermal_palette_golden_[256];
-  static const uint16_t thermal_palette_grayscale_[256];
-  static const uint16_t thermal_palette_ironblack_[256];
-  static const uint16_t thermal_palette_cam_[256];
-  static const uint16_t thermal_palette_ironbow_[256];
-  static const uint16_t thermal_palette_arctic_[256];
-  static const uint16_t thermal_palette_lava_[256];
-  static const uint16_t thermal_palette_whitehot_[256];
-  static const uint16_t thermal_palette_blackhot_[256];
+  // Thermal image generation and configuration (moved to PROGMEM to save RAM)
+  static const uint16_t thermal_palette_rainbow_[256] PROGMEM;
+  static const uint16_t thermal_palette_golden_[256] PROGMEM;
+  static const uint16_t thermal_palette_grayscale_[256] PROGMEM;
+  static const uint16_t thermal_palette_ironblack_[256] PROGMEM;
+  static const uint16_t thermal_palette_cam_[256] PROGMEM;
+  static const uint16_t thermal_palette_ironbow_[256] PROGMEM;
+  static const uint16_t thermal_palette_arctic_[256] PROGMEM;
+  static const uint16_t thermal_palette_lava_[256] PROGMEM;
+  static const uint16_t thermal_palette_whitehot_[256] PROGMEM;
+  static const uint16_t thermal_palette_blackhot_[256] PROGMEM;
 
   void generate_thermal_image_(uint8_t *rgb_buffer);
   uint16_t temp_to_color_(float temperature, float min_temp, float max_temp);
