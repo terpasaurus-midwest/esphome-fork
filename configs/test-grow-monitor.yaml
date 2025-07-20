@@ -16,6 +16,8 @@ esphome:
     board_build.f_cpu: 240000000L
   libraries:
     - Wire
+    - FS
+    - SPIFFS
     - m5stack/M5Unified
 
 external_components:
@@ -30,6 +32,7 @@ external_components:
       - m5cores3_power
       - scd4x_stats
       - scd4x_alerts
+      - mlx90640
 
 esp32:
   board: ${board}
@@ -38,7 +41,44 @@ esp32:
     type: ${framework_type}
 
 logger:
-  level: WARN
+  level: VERY_VERBOSE
+  logs:
+    api: WARN
+    wifi: WARN
+    json: WARN
+    wifi_info: WARN
+    api.service: WARN
+    safe_mode: WARN
+    esphome.ota: WARN
+    binary_sensor: WARN
+    homeassistant.binary_sensor: WARN
+    number: WARN
+    select: WARN
+    switch: WARN
+    text_sensor: WARN
+    template.switch: WARN
+    template.sensor: WARN
+    template.number: WARN
+    template.select: WARN
+    template.binary_sensor: WARN
+    template.text_sensor: WARN
+    scd4x: WARN
+    scd4x_stats: WARN
+    scd4x_alerts: WARN
+    m5cores3_touch: WARN
+    sensor: WARN
+    uptime.sensor: WARN
+    wifi_signal.sensor: WARN
+    mdns: WARN
+    debug: WARN
+    time: WARN
+    gpio.binary_sensor: WARN
+    logger: WARN
+    wifi_esp32: WARN
+    STA.cpp: WARN
+    i2c.arduino: WARN
+    esp32.preferences: WARN
+    restart.button: WARN
 
 debug:
   update_interval: 30s
@@ -69,7 +109,7 @@ web_server:
     - id: environmental_monitoring
       name: "Environmental Monitoring"
       sorting_weight: 10
-    - id: thermal_camera
+    - id: thermal_camera_group
       name: "Thermal Camera"
       sorting_weight: 20
     - id: environmental_alerts
@@ -107,21 +147,38 @@ m5cores3_power:
     name: "Battery Charging"
     id: battery_charging
 
+# MLX90640 thermal camera component (now separate from grow_env_monitor)
+mlx90640:
+  id: thermal_camera
+  refresh_rate: "16Hz"  # Higher performance testing
+  resolution: "18-bit"  # Good balance of precision/speed
+  pattern: "chess"  # Better for even temperature distribution
+  thermal_palette: "ironblack"  # Most intuitive color mapping
+  single_frame: false  # Reduce motion artifacts
+  update_interval: 10000  # Update every 2 seconds
+  web_server:
+    enable: true
+    path: "/thermal.jpg"
+    width: 320
+    height: 240
+    quality: 80
+  roi:
+    enabled: false  # Start disabled, user can enable via web interface
+    center_row: 12  # Center of 24 rows (1-24 user range)
+    center_col: 16  # Center of 32 cols (1-32 user range)
+    size: 2  # 5x5 ROI (25 pixels)
+  temperature_min: mlx_min_temp
+  temperature_max: mlx_max_temp
+  temperature_avg: mlx_mean_temp
+  roi_min: mlx_roi_min_temp
+  roi_max: mlx_roi_max_temp
+  roi_avg: mlx_roi_avg_temp
+
 grow_env_monitor:
   id: grow_monitor
   display_brightness: 70
   display_rotation: 3
-  thermal_camera:
-    thermal_refresh_rate: "16Hz" # Higher performance testing
-    thermal_resolution: "18-bit" # Good balance of precision/speed
-    thermal_pattern: "chess" # Better for even temperature distribution
-    thermal_palette: "ironblack" # Most intuitive color mapping
-    thermal_single_frame: true
-  roi:
-    enabled: false         # Start disabled, user can enable via web interface
-    center_row: 12         # Center of 24 rows (1-24 user range)
-    center_col: 16         # Center of 32 cols (1-32 user range)
-    size: 2                # 5x5 ROI (25 pixels)
+  mlx90640_component: thermal_camera
   sensors:
     co2: co2_sensor
     temperature: temperature_sensor
@@ -210,7 +267,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 10
   - platform: template
     name: "MLX90640 Max temp"
@@ -219,7 +276,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 20
   - platform: template
     name: "MLX90640 Mean temp"
@@ -228,7 +285,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 30
   - platform: template
     name: "MLX90640 ROI Min temp"
@@ -237,7 +294,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 40
   - platform: template
     name: "MLX90640 ROI Max temp"
@@ -246,7 +303,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 50
   - platform: template
     name: "MLX90640 ROI Mean temp"
@@ -255,7 +312,7 @@ sensor:
     device_class: temperature
     state_class: measurement
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 60
 
 scd4x_stats:
@@ -397,15 +454,14 @@ number:
     min_value: 100
     max_value: 30000
     step: 100
-    initial_value: 20000
-    optimistic: true
     unit_of_measurement: "ms"
     icon: "mdi:timer"
+    lambda: "return id(thermal_camera).get_update_interval();"
+    set_action:
+      - lambda: "id(thermal_camera).set_update_interval((uint32_t)x);"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 80
-    on_value:
-      - lambda: "id(grow_monitor).update_thermal_interval(x);"
   - platform: template
     name: "ROI Center Row"
     id: roi_center_row_number
@@ -416,10 +472,10 @@ number:
     optimistic: true
     icon: "mdi:crosshairs-gps"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 90
     on_value:
-      - lambda: "id(grow_monitor).update_roi_center_row((int)x);"
+      - lambda: "id(thermal_camera).update_roi_center_row((int)x);"
   - platform: template
     name: "ROI Center Column"
     id: roi_center_col_number
@@ -430,10 +486,10 @@ number:
     optimistic: true
     icon: "mdi:crosshairs-gps"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 100
     on_value:
-      - lambda: "id(grow_monitor).update_roi_center_col((int)x);"
+      - lambda: "id(thermal_camera).update_roi_center_col((int)x);"
   - platform: template
     name: "ROI Size"
     id: roi_size_number
@@ -444,10 +500,10 @@ number:
     optimistic: true
     icon: "mdi:resize"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 110
     on_value:
-      - lambda: "id(grow_monitor).update_roi_size((int)x);"
+      - lambda: "id(thermal_camera).update_roi_size((int)x);"
 
 select:
   - platform: template
@@ -468,59 +524,12 @@ select:
       - "blackhot"
     icon: "mdi:palette"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 40
     on_value:
-      - lambda: "id(grow_monitor).update_thermal_palette(x);"
-  - platform: template
-    name: "Thermal Refresh Rate"
-    id: thermal_refresh_rate_select
-    optimistic: true
-    initial_option: "16Hz"
-    options:
-      - "0.5Hz"
-      - "1Hz"
-      - "2Hz"
-      - "4Hz"
-      - "8Hz"
-      - "16Hz"
-      - "32Hz"
-      - "64Hz"
-    icon: "mdi:camera-timer"
-    web_server:
-      sorting_group_id: thermal_camera
-      sorting_weight: 50
-    on_value:
-      - lambda: "id(grow_monitor).update_thermal_refresh_rate(x);"
-  - platform: template
-    name: "Thermal Pattern"
-    id: thermal_pattern_select
-    optimistic: true
-    initial_option: "chess"
-    options:
-      - "chess"
-      - "interleaved"
-    icon: "mdi:grid"
-    web_server:
-      sorting_group_id: thermal_camera
-      sorting_weight: 60
-    on_value:
-      - lambda: "id(grow_monitor).update_thermal_pattern(x);"
+      - lambda: "id(thermal_camera).set_thermal_palette(x);"
 
 switch:
-  - platform: template
-    name: "Thermal Single Frame"
-    id: thermal_single_frame_switch
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    icon: "mdi:camera-burst"
-    web_server:
-      sorting_group_id: thermal_camera
-      sorting_weight: 70
-    on_turn_on:
-      - lambda: "id(grow_monitor).update_thermal_single_frame(true);"
-    on_turn_off:
-      - lambda: "id(grow_monitor).update_thermal_single_frame(false);"
   - platform: template
     name: "ROI Enabled"
     id: roi_enabled_switch
@@ -528,18 +537,18 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:crop-free"
     web_server:
-      sorting_group_id: thermal_camera
+      sorting_group_id: thermal_camera_group
       sorting_weight: 120
     on_turn_on:
-      - lambda: "id(grow_monitor).update_roi_enabled(true);"
+      - lambda: "id(thermal_camera).update_roi_enabled(true);"
     on_turn_off:
-      - lambda: "id(grow_monitor).update_roi_enabled(false);"
+      - lambda: "id(thermal_camera).update_roi_enabled(false);"
 
 binary_sensor:
   # Light validation - hardware detection only
   - platform: gpio
     pin:
-      number: 9 # Port B digital pin on M5Stack Core S3
+      number: 9  # Port B digital pin on M5Stack Core S3
       mode: INPUT_PULLDOWN
       inverted: true
     name: "Grow Light On"
@@ -548,8 +557,8 @@ binary_sensor:
       sorting_group_id: environmental_monitoring
       sorting_weight: 35
     filters:
-      - delayed_on: 5s # Debounce for startup
-      - delayed_off: 10s # Debounce for shutdown
+      - delayed_on: 5s  # Debounce for startup
+      - delayed_off: 10s  # Debounce for shutdown
 
   # Grow light switch status from Home Assistant
   - platform: homeassistant
@@ -567,7 +576,7 @@ binary_sensor:
       sorting_group_id: environmental_alerts
       sorting_weight: 110
     filters:
-      - delayed_on: 60s # wait a minute before checking to avoid false positives
+      - delayed_on: 60s  # wait a minute before checking to avoid false positives
       - delayed_off: 60s
 
 # Control buttons

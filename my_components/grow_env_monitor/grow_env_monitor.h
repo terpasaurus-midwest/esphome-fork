@@ -3,10 +3,8 @@
 #include "esphome/core/component.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
-#include <M5GFX.h>
-#include "MLX90640_API.h"
-#include "MLX90640_I2C_Driver.h"
-#include <Wire.h>
+#include <M5Unified.h>
+#include "esphome/components/mlx90640/mlx90640.h"
 
 namespace esphome {
 namespace grow_env_monitor {
@@ -30,28 +28,7 @@ class GrowEnvMonitor : public Component {
   void set_roi_max_sensor(sensor::Sensor *roi_max_sensor) { roi_max_sensor_ = roi_max_sensor; }
   void set_roi_avg_sensor(sensor::Sensor *roi_avg_sensor) { roi_avg_sensor_ = roi_avg_sensor; }
   void set_light_sensor(binary_sensor::BinarySensor *light_sensor) { light_sensor_ = light_sensor; }
-
-  // Thermal camera configuration setters
-  void set_thermal_refresh_rate(const std::string &rate) { thermal_refresh_rate_ = rate; }
-  void set_thermal_resolution(const std::string &resolution) { thermal_resolution_ = resolution; }
-  void set_thermal_pattern(const std::string &pattern) { thermal_pattern_ = pattern; }
-  void set_thermal_palette(const std::string &palette) { thermal_palette_ = palette; }
-  void set_thermal_single_frame(bool single_frame) { thermal_single_frame_ = single_frame; }
-  void set_roi_enabled(bool enabled) { roi_enabled_ = enabled; }
-  void set_roi_center_row(int row) { roi_center_row_ = row; }
-  void set_roi_center_col(int col) { roi_center_col_ = col; }
-  void set_roi_size(int size) { roi_size_ = size; }
-
-  // Runtime configuration change handlers
-  void update_thermal_refresh_rate(const std::string &rate);
-  void update_thermal_pattern(const std::string &pattern);
-  void update_thermal_palette(const std::string &palette);
-  void update_thermal_single_frame(bool single_frame);
-  void update_thermal_interval(float interval_ms);
-  void update_roi_enabled(bool enabled);
-  void update_roi_center_row(int row);
-  void update_roi_center_col(int col);
-  void update_roi_size(int size);
+  void set_mlx90640_component(mlx90640::MLX90640Component *mlx90640) { mlx90640_component_ = mlx90640; }
 
  protected:
   void draw_screen_();
@@ -68,17 +45,10 @@ class GrowEnvMonitor : public Component {
   void draw_vpd_value_();
   void draw_light_status_();
   void draw_thermal_values_();
-  void draw_status_();
   void check_and_update_sensor_values_();
   float calculate_vpd_(float temperature, float humidity);
   uint16_t get_status_color_(float co2, float temp, float humidity);
-  void setup_thermal_();
-  void update_thermal_data_();
-  void calculate_roi_bounds_(int center_row, int center_col, int size, int &min_row, int &max_row, int &min_col,
-                             int &max_col);
-  void process_roi_temperatures_();
 
-  M5GFX display_;
   bool initialized_{false};
   int display_brightness_{70};
   int display_rotation_{3};
@@ -93,6 +63,7 @@ class GrowEnvMonitor : public Component {
   sensor::Sensor *roi_max_sensor_{nullptr};
   sensor::Sensor *roi_avg_sensor_{nullptr};
   binary_sensor::BinarySensor *light_sensor_{nullptr};
+  mlx90640::MLX90640Component *mlx90640_component_{nullptr};
 
   // Previous values for selective redrawing
   float prev_co2_{NAN};
@@ -103,82 +74,8 @@ class GrowEnvMonitor : public Component {
   float prev_thermal_avg_{NAN};
   bool prev_light_on_{false};
 
-  // Thermal camera configuration
-  std::string thermal_refresh_rate_{"16Hz"};  // Balanced performance default
-  std::string thermal_resolution_{"18-bit"};
-  std::string thermal_pattern_{"chess"};
-  std::string thermal_palette_{"rainbow"};
-  bool thermal_single_frame_{false};  // Read single frame for motion handling
-  const uint16_t *current_palette_{nullptr};
-
-  // ROI configuration (1-based user coordinates, converted to 0-based internally)
-  bool roi_enabled_{false};
-  int roi_center_row_{12};  // Default center of 24 rows (1-24 user range)
-  int roi_center_col_{16};  // Default center of 32 cols (1-32 user range)
-  int roi_size_{2};         // Default 5x5 ROI (25 pixels)
-
-  // MLX90640 thermal camera
-  static const uint8_t MLX90640_ADDRESS = 0x33;
-  static const int TA_SHIFT = 8;
-  paramsMLX90640 mlx90640_params_;
-  float mlx90640_pixels_[32 * 24];
-  float interpolated_pixels_[64 * 48];  // 2x upscaled thermal data
-  bool thermal_initialized_{false};
-
-  // Large buffers moved from stack to prevent overflow
-  uint16_t mlx90640Frame_[834];  // MLX90640 frame buffer (1,668 bytes)
-  float valid_pixels_[768];      // Valid pixel buffer for sorting (3,072 bytes)
-  float adj_2d_[16];             // Adjacent matrix for interpolation (64 bytes)
-
-  // Thermal temperature data
-  float thermal_min_temp_{20.0};
-  float thermal_max_temp_{30.0};
-  float thermal_avg_temp_{25.0};
-  float thermal_median_temp_{25.0};
-
-  // ROI temperature data
-  float roi_min_temp_{20.0};
-  float roi_max_temp_{30.0};
-  float roi_avg_temp_{25.0};
-  float roi_median_temp_{25.0};
-  int roi_pixel_count_{0};
-
-  // Thermal image generation and configuration (moved to PROGMEM to save RAM)
-  static const uint16_t thermal_palette_rainbow_[256] PROGMEM;
-  static const uint16_t thermal_palette_golden_[256] PROGMEM;
-  static const uint16_t thermal_palette_grayscale_[256] PROGMEM;
-  static const uint16_t thermal_palette_ironblack_[256] PROGMEM;
-  static const uint16_t thermal_palette_cam_[256] PROGMEM;
-  static const uint16_t thermal_palette_ironbow_[256] PROGMEM;
-  static const uint16_t thermal_palette_arctic_[256] PROGMEM;
-  static const uint16_t thermal_palette_lava_[256] PROGMEM;
-  static const uint16_t thermal_palette_whitehot_[256] PROGMEM;
-  static const uint16_t thermal_palette_blackhot_[256] PROGMEM;
-
-  void generate_thermal_image_(uint8_t *rgb_buffer);
-  uint16_t temp_to_color_(float temperature, float min_temp, float max_temp);
-  void setup_thermal_web_server_();
-
-  // Configuration helper functions
-  uint16_t parse_refresh_rate_(const std::string &rate_str);
-  int parse_resolution_(const std::string &res_str);
-  int setup_thermal_resolution_(int bits);
-  int setup_thermal_pattern_(const std::string &pattern);
-  void set_active_palette_();
-
-  // Thermal interpolation functions
-  float get_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
-  void set_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y, float f);
-  void get_adjacents_2d_(float *src, float *dest, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
-  float cubic_interpolate_(float p[], float x);
-  float bicubic_interpolate_(float p[], float x, float y);
-  void interpolate_image_(float *src, uint8_t src_rows, uint8_t src_cols, float *dest, uint8_t dest_rows,
-                          uint8_t dest_cols);
-
   // Update tracking
   uint32_t last_update_time_{0};
-  uint32_t last_thermal_update_time_{0};
-  uint32_t thermal_update_interval_{20000};       // Default 20 seconds, user configurable
   static const uint32_t UPDATE_INTERVAL = 10000;  // 10 seconds for environmental data
 
   // Display layout constants

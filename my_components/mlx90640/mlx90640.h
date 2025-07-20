@@ -1,0 +1,206 @@
+#pragma once
+
+#include "esphome/core/component.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/web_server_base/web_server_base.h"
+#include "MLX90640_API.h"
+#include "MLX90640_I2C_Driver.h"
+#include <Wire.h>
+#include <algorithm>
+#include <FS.h>
+#include <SPIFFS.h>
+
+// Always include JPEGENC for JPEG generation
+#include <JPEGENC.h>
+
+namespace esphome {
+namespace mlx90640 {
+
+struct ROIConfig {
+  bool enabled = false;
+  int center_row = 12;  // 1-24 user range
+  int center_col = 16;  // 1-32 user range
+  int size = 2;         // ROI scaling factor
+};
+
+class MLX90640Component : public Component {
+ public:
+  MLX90640Component() : base_(nullptr) {}
+
+  void setup() override;
+  void loop() override;
+  void dump_config() override;
+  float get_setup_priority() const override { return setup_priority::AFTER_WIFI - 1.0f; }
+
+  // Configuration setters
+  void set_refresh_rate(const std::string &rate) { refresh_rate_ = rate; }
+  void set_resolution(const std::string &resolution) { resolution_ = resolution; }
+  void set_pattern(const std::string &pattern) { pattern_ = pattern; }
+  void set_single_frame(bool single_frame) { single_frame_ = single_frame; }
+  void set_update_interval(uint32_t interval) { update_interval_ = interval; }
+  uint32_t get_update_interval() const { return update_interval_; }
+
+  // ROI configuration
+  void set_roi_config(const ROIConfig &config) { roi_config_ = config; }
+  void update_roi_enabled(bool enabled) { roi_config_.enabled = enabled; }
+  void update_roi_center_row(int row) {
+    if (row >= 1 && row <= 24)
+      roi_config_.center_row = row;
+  }
+  void update_roi_center_col(int col) {
+    if (col >= 1 && col <= 32)
+      roi_config_.center_col = col;
+  }
+  void update_roi_size(int size) {
+    if (size >= 1 && size <= 10)
+      roi_config_.size = size;
+  }
+
+  // Web server configuration
+  void set_web_server_enabled(bool enabled) { web_server_enabled_ = enabled; }
+  void set_web_server_path(const std::string &path) { web_server_path_ = path; }
+  void set_web_server_width(int width) { web_server_width_ = width; }
+  void set_web_server_height(int height) { web_server_height_ = height; }
+  void set_web_server_quality(int quality) { web_server_quality_ = quality; }
+
+  // Sensor setters
+  void set_temperature_min_sensor(sensor::Sensor *sensor) { temp_min_sensor_ = sensor; }
+  void set_temperature_max_sensor(sensor::Sensor *sensor) { temp_max_sensor_ = sensor; }
+  void set_temperature_avg_sensor(sensor::Sensor *sensor) { temp_avg_sensor_ = sensor; }
+  void set_roi_min_sensor(sensor::Sensor *sensor) { roi_min_sensor_ = sensor; }
+  void set_roi_max_sensor(sensor::Sensor *sensor) { roi_max_sensor_ = sensor; }
+  void set_roi_avg_sensor(sensor::Sensor *sensor) { roi_avg_sensor_ = sensor; }
+
+  // Data access methods for external components
+  bool is_initialized() const { return initialized_; }
+  const float *get_thermal_pixels() const { return mlx90640_pixels_; }
+  const float *get_interpolated_pixels() const { return interpolated_pixels_; }
+
+  // Temperature data getters
+  float get_min_temp() const { return min_temp_; }
+  float get_max_temp() const { return max_temp_; }
+  float get_avg_temp() const { return avg_temp_; }
+  float get_median_temp() const { return median_temp_; }
+
+  // ROI data getters
+  bool is_roi_enabled() const { return roi_config_.enabled; }
+  float get_roi_min_temp() const { return roi_min_temp_; }
+  float get_roi_max_temp() const { return roi_max_temp_; }
+  float get_roi_avg_temp() const { return roi_avg_temp_; }
+  float get_roi_median_temp() const { return roi_median_temp_; }
+  int get_roi_pixel_count() const { return roi_pixel_count_; }
+  const ROIConfig &get_roi_config() const { return roi_config_; }
+
+  // Thermal color mapping
+  void set_thermal_palette(const std::string &palette);
+  uint16_t temp_to_color(float temperature, float min_temp, float max_temp) const;
+
+  // ROI overlay coordinate calculation (hardware-agnostic)
+  bool get_roi_overlay_bounds(int image_x, int image_y, int image_w, int image_h, int &roi_x1, int &roi_y1, int &roi_x2,
+                              int &roi_y2) const;
+  bool get_roi_crosshair_coords(int image_x, int image_y, int image_w, int image_h, int &center_x, int &center_y) const;
+
+  // Web server thermal image handler
+  void handle_thermal_image_request_(AsyncWebServerRequest *request);
+
+ protected:
+  void setup_thermal_();
+  void update_thermal_data_();
+  void calculate_roi_bounds_(int center_row, int center_col, int size, int &min_row, int &max_row, int &min_col,
+                             int &max_col) const;
+  void process_roi_temperatures_();
+
+  // Configuration helpers
+  uint16_t parse_refresh_rate_(const std::string &rate_str);
+  int parse_resolution_(const std::string &res_str);
+  int setup_thermal_resolution_(int bits);
+  int setup_thermal_pattern_(const std::string &pattern);
+  void set_active_palette_();
+
+  // Thermal interpolation for smooth upscaling (optional, for display purposes)
+  void interpolate_image_(float *src, uint8_t src_rows, uint8_t src_cols, float *dest, uint8_t dest_rows,
+                          uint8_t dest_cols);
+  float get_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
+  void set_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y, float f);
+
+  // Web server JPEG generation
+  void setup_web_server_();
+  void generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality);
+  void get_adjacents_2d_(float *src, float *dest, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
+  float cubic_interpolate_(float p[], float x);
+  float bicubic_interpolate_(float p[], float x, float y);
+
+  // Hardware configuration
+  static const uint8_t MLX90640_ADDRESS = 0x33;
+  static const int TA_SHIFT = 8;
+
+  // Configuration
+  std::string refresh_rate_{"16Hz"};
+  std::string resolution_{"18-bit"};
+  std::string pattern_{"chess"};
+  bool single_frame_{false};
+  uint32_t update_interval_{20000};  // 20 seconds default
+  ROIConfig roi_config_;
+
+  // Thermal palette configuration
+  std::string thermal_palette_{"rainbow"};
+  const uint16_t *current_palette_{nullptr};
+
+  // Web server configuration
+  bool web_server_enabled_{false};
+  std::string web_server_path_{"/thermal.jpg"};
+  int web_server_width_{320};
+  int web_server_height_{240};
+  int web_server_quality_{85};
+  web_server_base::WebServerBase *base_;
+
+  // Hardware state
+  bool initialized_{false};
+  paramsMLX90640 mlx90640_params_;
+
+  // Data buffers (class members to prevent stack overflow)
+  float mlx90640_pixels_[32 * 24];      // Raw thermal data
+  float interpolated_pixels_[64 * 48];  // 2x upscaled thermal data
+  uint16_t mlx90640Frame_[834];         // MLX90640 frame buffer
+  float valid_pixels_[768];             // Valid pixel buffer for sorting
+  float adj_2d_[16];                    // Adjacent matrix for interpolation
+
+  // Temperature statistics
+  float min_temp_{20.0};
+  float max_temp_{30.0};
+  float avg_temp_{25.0};
+  float median_temp_{25.0};
+
+  // ROI statistics
+  float roi_min_temp_{20.0};
+  float roi_max_temp_{30.0};
+  float roi_avg_temp_{25.0};
+  float roi_median_temp_{25.0};
+  int roi_pixel_count_{0};
+
+  // Sensors (optional - for publishing to ESPHome)
+  sensor::Sensor *temp_min_sensor_{nullptr};
+  sensor::Sensor *temp_max_sensor_{nullptr};
+  sensor::Sensor *temp_avg_sensor_{nullptr};
+  sensor::Sensor *roi_min_sensor_{nullptr};
+  sensor::Sensor *roi_max_sensor_{nullptr};
+  sensor::Sensor *roi_avg_sensor_{nullptr};
+
+  // Timing
+  uint32_t last_update_time_{0};
+
+  // Thermal color palettes (moved to PROGMEM to save RAM)
+  static const uint16_t thermal_palette_rainbow_[256] PROGMEM;
+  static const uint16_t thermal_palette_golden_[256] PROGMEM;
+  static const uint16_t thermal_palette_grayscale_[256] PROGMEM;
+  static const uint16_t thermal_palette_ironblack_[256] PROGMEM;
+  static const uint16_t thermal_palette_cam_[256] PROGMEM;
+  static const uint16_t thermal_palette_ironbow_[256] PROGMEM;
+  static const uint16_t thermal_palette_arctic_[256] PROGMEM;
+  static const uint16_t thermal_palette_lava_[256] PROGMEM;
+  static const uint16_t thermal_palette_whitehot_[256] PROGMEM;
+  static const uint16_t thermal_palette_blackhot_[256] PROGMEM;
+};
+
+}  // namespace mlx90640
+}  // namespace esphome
