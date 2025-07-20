@@ -26,6 +26,9 @@ class GrowEnvMonitor : public Component {
   void set_thermal_min_sensor(sensor::Sensor *thermal_min_sensor) { thermal_min_sensor_ = thermal_min_sensor; }
   void set_thermal_max_sensor(sensor::Sensor *thermal_max_sensor) { thermal_max_sensor_ = thermal_max_sensor; }
   void set_thermal_avg_sensor(sensor::Sensor *thermal_avg_sensor) { thermal_avg_sensor_ = thermal_avg_sensor; }
+  void set_roi_min_sensor(sensor::Sensor *roi_min_sensor) { roi_min_sensor_ = roi_min_sensor; }
+  void set_roi_max_sensor(sensor::Sensor *roi_max_sensor) { roi_max_sensor_ = roi_max_sensor; }
+  void set_roi_avg_sensor(sensor::Sensor *roi_avg_sensor) { roi_avg_sensor_ = roi_avg_sensor; }
   void set_light_sensor(binary_sensor::BinarySensor *light_sensor) { light_sensor_ = light_sensor; }
 
   // Thermal camera configuration setters
@@ -34,6 +37,10 @@ class GrowEnvMonitor : public Component {
   void set_thermal_pattern(const std::string &pattern) { thermal_pattern_ = pattern; }
   void set_thermal_palette(const std::string &palette) { thermal_palette_ = palette; }
   void set_thermal_single_frame(bool single_frame) { thermal_single_frame_ = single_frame; }
+  void set_roi_enabled(bool enabled) { roi_enabled_ = enabled; }
+  void set_roi_center_row(int row) { roi_center_row_ = row; }
+  void set_roi_center_col(int col) { roi_center_col_ = col; }
+  void set_roi_size(int size) { roi_size_ = size; }
 
   // Runtime configuration change handlers
   void update_thermal_refresh_rate(const std::string &rate);
@@ -41,12 +48,17 @@ class GrowEnvMonitor : public Component {
   void update_thermal_palette(const std::string &palette);
   void update_thermal_single_frame(bool single_frame);
   void update_thermal_interval(float interval_ms);
+  void update_roi_enabled(bool enabled);
+  void update_roi_center_row(int row);
+  void update_roi_center_col(int col);
+  void update_roi_size(int size);
 
  protected:
   void draw_screen_();
   void draw_sensor_data_();
   void draw_thermal_data_();
   void draw_thermal_image_();
+  void draw_roi_overlay_(int image_x, int image_y, int image_w, int image_h);
   void draw_alerts_();
 
   // Selective redraw functions
@@ -62,6 +74,9 @@ class GrowEnvMonitor : public Component {
   uint16_t get_status_color_(float co2, float temp, float humidity);
   void setup_thermal_();
   void update_thermal_data_();
+  void calculate_roi_bounds_(int center_row, int center_col, int size, int &min_row, int &max_row, int &min_col,
+                             int &max_col);
+  void process_roi_temperatures_();
 
   M5GFX display_;
   bool initialized_{false};
@@ -74,6 +89,9 @@ class GrowEnvMonitor : public Component {
   sensor::Sensor *thermal_min_sensor_{nullptr};
   sensor::Sensor *thermal_max_sensor_{nullptr};
   sensor::Sensor *thermal_avg_sensor_{nullptr};
+  sensor::Sensor *roi_min_sensor_{nullptr};
+  sensor::Sensor *roi_max_sensor_{nullptr};
+  sensor::Sensor *roi_avg_sensor_{nullptr};
   binary_sensor::BinarySensor *light_sensor_{nullptr};
 
   // Previous values for selective redrawing
@@ -93,6 +111,12 @@ class GrowEnvMonitor : public Component {
   bool thermal_single_frame_{false};  // Read single frame for motion handling
   const uint16_t *current_palette_{nullptr};
 
+  // ROI configuration (1-based user coordinates, converted to 0-based internally)
+  bool roi_enabled_{false};
+  int roi_center_row_{12};  // Default center of 24 rows (1-24 user range)
+  int roi_center_col_{16};  // Default center of 32 cols (1-32 user range)
+  int roi_size_{2};         // Default 5x5 ROI (25 pixels)
+
   // MLX90640 thermal camera
   static const uint8_t MLX90640_ADDRESS = 0x33;
   static const int TA_SHIFT = 8;
@@ -111,6 +135,13 @@ class GrowEnvMonitor : public Component {
   float thermal_max_temp_{30.0};
   float thermal_avg_temp_{25.0};
   float thermal_median_temp_{25.0};
+
+  // ROI temperature data
+  float roi_min_temp_{20.0};
+  float roi_max_temp_{30.0};
+  float roi_avg_temp_{25.0};
+  float roi_median_temp_{25.0};
+  int roi_pixel_count_{0};
 
   // Thermal image generation and configuration (moved to PROGMEM to save RAM)
   static const uint16_t thermal_palette_rainbow_[256] PROGMEM;

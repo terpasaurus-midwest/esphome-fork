@@ -14,6 +14,9 @@ CONF_HUMIDITY = "humidity"
 CONF_THERMAL_MIN = "thermal_min"
 CONF_THERMAL_MAX = "thermal_max"
 CONF_THERMAL_AVG = "thermal_avg"
+CONF_ROI_MIN = "roi_min"
+CONF_ROI_MAX = "roi_max"
+CONF_ROI_AVG = "roi_avg"
 CONF_LIGHT_SENSOR = "light_sensor"
 CONF_THERMAL_CAMERA = "thermal_camera"
 CONF_THERMAL_REFRESH_RATE = "thermal_refresh_rate"
@@ -21,6 +24,11 @@ CONF_THERMAL_RESOLUTION = "thermal_resolution"
 CONF_THERMAL_PATTERN = "thermal_pattern"
 CONF_THERMAL_PALETTE = "thermal_palette"
 CONF_THERMAL_SINGLE_FRAME = "thermal_single_frame"
+CONF_ROI = "roi"
+CONF_ROI_ENABLED = "enabled"
+CONF_ROI_CENTER_ROW = "center_row"
+CONF_ROI_CENTER_COL = "center_col"
+CONF_ROI_SIZE = "size"
 
 # Thermal camera configuration documentation:
 #
@@ -69,6 +77,9 @@ CONFIG_SCHEMA = cv.Schema(
                 cv.Required(CONF_THERMAL_MIN): cv.use_id(sensor.Sensor),
                 cv.Required(CONF_THERMAL_MAX): cv.use_id(sensor.Sensor),
                 cv.Required(CONF_THERMAL_AVG): cv.use_id(sensor.Sensor),
+                cv.Optional(CONF_ROI_MIN): cv.use_id(sensor.Sensor),
+                cv.Optional(CONF_ROI_MAX): cv.use_id(sensor.Sensor),
+                cv.Optional(CONF_ROI_AVG): cv.use_id(sensor.Sensor),
                 cv.Optional(CONF_LIGHT_SENSOR): cv.use_id(binary_sensor.BinarySensor),
             }
         ),
@@ -96,6 +107,18 @@ CONFIG_SCHEMA = cv.Schema(
                     "blackhot",
                 ),
                 cv.Optional(CONF_THERMAL_SINGLE_FRAME, default=False): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_ROI): cv.Schema(
+            {
+                cv.Optional(CONF_ROI_ENABLED, default=False): cv.boolean,
+                cv.Optional(CONF_ROI_CENTER_ROW, default=12): cv.int_range(
+                    min=1, max=24
+                ),
+                cv.Optional(CONF_ROI_CENTER_COL, default=16): cv.int_range(
+                    min=1, max=32
+                ),
+                cv.Optional(CONF_ROI_SIZE, default=2): cv.int_range(min=1, max=10),
             }
         ),
     }
@@ -131,6 +154,18 @@ async def to_code(config):
     thermal_avg_sensor = await cg.get_variable(sensors[CONF_THERMAL_AVG])
     cg.add(var.set_thermal_avg_sensor(thermal_avg_sensor))
 
+    if CONF_ROI_MIN in sensors:
+        roi_min_sensor = await cg.get_variable(sensors[CONF_ROI_MIN])
+        cg.add(var.set_roi_min_sensor(roi_min_sensor))
+
+    if CONF_ROI_MAX in sensors:
+        roi_max_sensor = await cg.get_variable(sensors[CONF_ROI_MAX])
+        cg.add(var.set_roi_max_sensor(roi_max_sensor))
+
+    if CONF_ROI_AVG in sensors:
+        roi_avg_sensor = await cg.get_variable(sensors[CONF_ROI_AVG])
+        cg.add(var.set_roi_avg_sensor(roi_avg_sensor))
+
     if CONF_LIGHT_SENSOR in sensors:
         light_sensor = await cg.get_variable(sensors[CONF_LIGHT_SENSOR])
         cg.add(var.set_light_sensor(light_sensor))
@@ -143,3 +178,11 @@ async def to_code(config):
         cg.add(var.set_thermal_pattern(thermal_config[CONF_THERMAL_PATTERN]))
         cg.add(var.set_thermal_palette(thermal_config[CONF_THERMAL_PALETTE]))
         cg.add(var.set_thermal_single_frame(thermal_config[CONF_THERMAL_SINGLE_FRAME]))
+
+    # Set ROI configuration if provided
+    if CONF_ROI in config:
+        roi_config = config[CONF_ROI]
+        cg.add(var.set_roi_enabled(roi_config[CONF_ROI_ENABLED]))
+        cg.add(var.set_roi_center_row(roi_config[CONF_ROI_CENTER_ROW]))
+        cg.add(var.set_roi_center_col(roi_config[CONF_ROI_CENTER_COL]))
+        cg.add(var.set_roi_size(roi_config[CONF_ROI_SIZE]))
