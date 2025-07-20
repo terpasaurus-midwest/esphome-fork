@@ -117,6 +117,11 @@ grow_env_monitor:
     thermal_pattern: "chess" # Better for even temperature distribution
     thermal_palette: "ironblack" # Most intuitive color mapping
     thermal_single_frame: true
+  roi:
+    enabled: false         # Start disabled, user can enable via web interface
+    center_row: 12         # Center of 24 rows (1-24 user range)
+    center_col: 16         # Center of 32 cols (1-32 user range)
+    size: 2                # 5x5 ROI (25 pixels)
   sensors:
     co2: co2_sensor
     temperature: temperature_sensor
@@ -124,6 +129,9 @@ grow_env_monitor:
     thermal_min: mlx_min_temp
     thermal_max: mlx_max_temp
     thermal_avg: mlx_mean_temp
+    roi_min: mlx_roi_min_temp
+    roi_max: mlx_roi_max_temp
+    roi_avg: mlx_roi_avg_temp
     light_sensor: grow_light_on
 # M5 Stack Touch Support
 m5cores3_touch:
@@ -222,6 +230,33 @@ sensor:
     web_server:
       sorting_group_id: thermal_camera
       sorting_weight: 30
+  - platform: template
+    name: "MLX90640 ROI Min temp"
+    id: mlx_roi_min_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 40
+  - platform: template
+    name: "MLX90640 ROI Max temp"
+    id: mlx_roi_max_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 50
+  - platform: template
+    name: "MLX90640 ROI Mean temp"
+    id: mlx_roi_avg_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 60
 
 scd4x_stats:
   id: co2_stats
@@ -371,6 +406,48 @@ number:
       sorting_weight: 80
     on_value:
       - lambda: "id(grow_monitor).update_thermal_interval(x);"
+  - platform: template
+    name: "ROI Center Row"
+    id: roi_center_row_number
+    min_value: 1
+    max_value: 24
+    step: 1
+    initial_value: 12
+    optimistic: true
+    icon: "mdi:crosshairs-gps"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 90
+    on_value:
+      - lambda: "id(grow_monitor).update_roi_center_row((int)x);"
+  - platform: template
+    name: "ROI Center Column"
+    id: roi_center_col_number
+    min_value: 1
+    max_value: 32
+    step: 1
+    initial_value: 16
+    optimistic: true
+    icon: "mdi:crosshairs-gps"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 100
+    on_value:
+      - lambda: "id(grow_monitor).update_roi_center_col((int)x);"
+  - platform: template
+    name: "ROI Size"
+    id: roi_size_number
+    min_value: 1
+    max_value: 10
+    step: 1
+    initial_value: 2
+    optimistic: true
+    icon: "mdi:resize"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 110
+    on_value:
+      - lambda: "id(grow_monitor).update_roi_size((int)x);"
 
 select:
   - platform: template
@@ -444,6 +521,19 @@ switch:
       - lambda: "id(grow_monitor).update_thermal_single_frame(true);"
     on_turn_off:
       - lambda: "id(grow_monitor).update_thermal_single_frame(false);"
+  - platform: template
+    name: "ROI Enabled"
+    id: roi_enabled_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:crop-free"
+    web_server:
+      sorting_group_id: thermal_camera
+      sorting_weight: 120
+    on_turn_on:
+      - lambda: "id(grow_monitor).update_roi_enabled(true);"
+    on_turn_off:
+      - lambda: "id(grow_monitor).update_roi_enabled(false);"
 
 binary_sensor:
   # Light validation - hardware detection only

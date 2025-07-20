@@ -541,6 +541,9 @@ void GrowEnvMonitor::update_thermal_data_() {
 
   ESP_LOGD(TAG, "MLX90640 data (%d valid pixels) - Min: %.1f°C, Max: %.1f°C, Avg: %.1f°C, Median: %.1f°C", valid_count,
            thermal_min_temp_, thermal_max_temp_, thermal_avg_temp_, thermal_median_temp_);
+
+  // Process ROI temperatures if enabled
+  process_roi_temperatures_();
 }
 
 // M5 Rainbow thermal color palette (256 colors)
@@ -954,34 +957,63 @@ void GrowEnvMonitor::draw_thermal_image_() {
   display_.setTextSize(1);
   display_.setTextColor(COLOR_TEXT);
 
-  // Min temp
-  display_.setCursor(image_x, info_y);
-  display_.print("Min: ");
-  if (thermal_min_sensor_ && thermal_min_sensor_->has_state()) {
-    display_.print(thermal_min_sensor_->state, 1);
+  // Display ROI or full-frame temperatures based on ROI enabled state
+  if (roi_enabled_ && roi_pixel_count_ > 0) {
+    // Show ROI temperatures
+    // Min temp
+    display_.setCursor(image_x, info_y);
+    display_.print("Min: ");
+    display_.print(roi_min_temp_, 1);
     display_.print("C");
-  } else {
-    display_.print("--");
-  }
 
-  // Max temp (same line, offset)
-  display_.setCursor(image_x + 80, info_y);
-  display_.print("Max: ");
-  if (thermal_max_sensor_ && thermal_max_sensor_->has_state()) {
-    display_.print(thermal_max_sensor_->state, 1);
+    // Max temp (same line, offset)
+    display_.setCursor(image_x + 80, info_y);
+    display_.print("Max: ");
+    display_.print(roi_max_temp_, 1);
     display_.print("C");
-  } else {
-    display_.print("--");
-  }
 
-  // Avg temp (next line)
-  display_.setCursor(image_x, info_y + 12);
-  display_.print("Avg: ");
-  if (thermal_avg_sensor_ && thermal_avg_sensor_->has_state()) {
-    display_.print(thermal_avg_sensor_->state, 1);
+    // Avg temp (next line)
+    display_.setCursor(image_x, info_y + 12);
+    display_.print("Avg: ");
+    display_.print(roi_avg_temp_, 1);
     display_.print("C");
+
+    // ROI indicator label (right of Avg temp)
+    display_.setCursor(image_x + 80, info_y + 12);
+    display_.setTextColor(COLOR_GOOD);  // Green color
+    display_.print("ROI Mode");
+    display_.setTextColor(COLOR_TEXT);  // Back to white
   } else {
-    display_.print("--");
+    // Show full-frame temperatures (original behavior)
+    // Min temp
+    display_.setCursor(image_x, info_y);
+    display_.print("Min: ");
+    if (thermal_min_sensor_ && thermal_min_sensor_->has_state()) {
+      display_.print(thermal_min_sensor_->state, 1);
+      display_.print("C");
+    } else {
+      display_.print("--");
+    }
+
+    // Max temp (same line, offset)
+    display_.setCursor(image_x + 80, info_y);
+    display_.print("Max: ");
+    if (thermal_max_sensor_ && thermal_max_sensor_->has_state()) {
+      display_.print(thermal_max_sensor_->state, 1);
+      display_.print("C");
+    } else {
+      display_.print("--");
+    }
+
+    // Avg temp (next line)
+    display_.setCursor(image_x, info_y + 12);
+    display_.print("Avg: ");
+    if (thermal_avg_sensor_ && thermal_avg_sensor_->has_state()) {
+      display_.print(thermal_avg_sensor_->state, 1);
+      display_.print("C");
+    } else {
+      display_.print("--");
+    }
   }
 
   // Draw thermal image with color mapping - using interpolated data for smoother display
@@ -1010,8 +1042,54 @@ void GrowEnvMonitor::draw_thermal_image_() {
     }
   }
 
+  // Draw ROI overlay if enabled
+  if (roi_enabled_) {
+    draw_roi_overlay_(image_x, image_y, image_w, image_h);
+  }
+
   // Draw border around thermal image
   display_.drawRect(image_x - 1, image_y - 1, image_w + 2, image_h + 2, COLOR_TEXT);
+}
+
+void GrowEnvMonitor::draw_roi_overlay_(int image_x, int image_y, int image_w, int image_h) {
+  if (!roi_enabled_) {
+    return;
+  }
+
+  // Calculate ROI bounds in original 32x24 thermal data coordinate system
+  int min_row, max_row, min_col, max_col;
+  calculate_roi_bounds_(roi_center_row_, roi_center_col_, roi_size_, min_row, max_row, min_col, max_col);
+
+  // Scale ROI bounds to display coordinates (thermal image is 64x48 interpolated, but we map to original 32x24 grid)
+  // We need to map from 32x24 coordinates to the display coordinates
+  int roi_display_x1 = image_x + (min_col * image_w / 32);
+  int roi_display_y1 = image_y + (min_row * image_h / 24);
+  int roi_display_x2 = image_x + ((max_col + 1) * image_w / 32);
+  int roi_display_y2 = image_y + ((max_row + 1) * image_h / 24);
+
+  int roi_width = roi_display_x2 - roi_display_x1;
+  int roi_height = roi_display_y2 - roi_display_y1;
+
+  // Draw cyan border around ROI selection - stands out well against thermal colors
+  uint16_t roi_color = 0x07FF;  // Bright cyan (RGB565) - good contrast against thermal palettes
+  display_.drawRect(roi_display_x1, roi_display_y1, roi_width, roi_height, roi_color);
+
+  // Draw a second border 1 pixel inset for better visibility
+  display_.drawRect(roi_display_x1 + 1, roi_display_y1 + 1, roi_width - 2, roi_height - 2, roi_color);
+
+  // Draw crosshairs at center point to help identify the exact ROI center
+  int center_display_x = image_x + ((roi_center_col_ - 1) * image_w / 32) +
+                         (image_w / 64);  // Convert to display coords with half-pixel offset
+  int center_display_y = image_y + ((roi_center_row_ - 1) * image_h / 24) +
+                         (image_h / 48);  // Convert to display coords with half-pixel offset
+  int crosshair_size = 6;                 // Length of crosshair lines in pixels
+
+  // Horizontal crosshair line
+  display_.drawLine(center_display_x - crosshair_size, center_display_y, center_display_x + crosshair_size,
+                    center_display_y, roi_color);
+  // Vertical crosshair line
+  display_.drawLine(center_display_x, center_display_y - crosshair_size, center_display_x,
+                    center_display_y + crosshair_size, roi_color);
 }
 
 void GrowEnvMonitor::setup_thermal_web_server_() {
@@ -1383,6 +1461,107 @@ void GrowEnvMonitor::update_thermal_single_frame(bool single_frame) {
 void GrowEnvMonitor::update_thermal_interval(float interval_ms) {
   thermal_update_interval_ = (uint32_t) interval_ms;
   ESP_LOGCONFIG(TAG, "Thermal update interval set to %dms", thermal_update_interval_);
+}
+
+// ROI calculation helper - converts 1-based user coordinates to 0-based array bounds
+void GrowEnvMonitor::calculate_roi_bounds_(int center_row, int center_col, int size, int &min_row, int &max_row,
+                                           int &min_col, int &max_col) {
+  // Convert 1-based user coordinates to 0-based array indices
+  int center_row_idx = center_row - 1;  // Convert 1-24 to 0-23
+  int center_col_idx = center_col - 1;  // Convert 1-32 to 0-31
+
+  // Calculate ROI bounds (size = n means (2n+1)x(2n+1) square)
+  min_row = std::max(0, center_row_idx - size);
+  max_row = std::min(23, center_row_idx + size);  // MLX90640 has 24 rows (0-23)
+  min_col = std::max(0, center_col_idx - size);
+  max_col = std::min(31, center_col_idx + size);  // MLX90640 has 32 columns (0-31)
+}
+
+// Process ROI temperatures from the main mlx90640_pixels_ array
+void GrowEnvMonitor::process_roi_temperatures_() {
+  if (!roi_enabled_ || !thermal_initialized_) {
+    return;
+  }
+
+  int min_row, max_row, min_col, max_col;
+  calculate_roi_bounds_(roi_center_row_, roi_center_col_, roi_size_, min_row, max_row, min_col, max_col);
+
+  roi_pixel_count_ = 0;
+  float min_temp = 1000.0f;   // Initialize to unrealistically high value
+  float max_temp = -1000.0f;  // Initialize to unrealistically low value
+  float sum_temp = 0.0f;
+
+  // Collect valid ROI pixels
+  for (int row = min_row; row <= max_row; row++) {
+    for (int col = min_col; col <= max_col; col++) {
+      int pixel_idx = row * 32 + col;  // MLX90640 is 32 columns wide
+      float temp = mlx90640_pixels_[pixel_idx];
+
+      // Filter out invalid/extreme readings (same range as main processing)
+      if (temp > -40.0 && temp < 85.0) {
+        valid_pixels_[roi_pixel_count_++] = temp;  // Reuse the existing valid_pixels_ array
+        if (temp < min_temp)
+          min_temp = temp;
+        if (temp > max_temp)
+          max_temp = temp;
+        sum_temp += temp;
+      }
+    }
+  }
+
+  if (roi_pixel_count_ > 0) {
+    roi_min_temp_ = min_temp;
+    roi_max_temp_ = max_temp;
+    roi_avg_temp_ = sum_temp / roi_pixel_count_;
+
+    // Calculate ROI median temperature
+    std::sort(valid_pixels_, valid_pixels_ + roi_pixel_count_);
+    roi_median_temp_ = valid_pixels_[roi_pixel_count_ / 2];
+
+    // Update ROI sensors
+    if (roi_min_sensor_) {
+      roi_min_sensor_->publish_state(roi_min_temp_);
+    }
+    if (roi_max_sensor_) {
+      roi_max_sensor_->publish_state(roi_max_temp_);
+    }
+    if (roi_avg_sensor_) {
+      roi_avg_sensor_->publish_state(roi_avg_temp_);
+    }
+
+    ESP_LOGD(TAG, "ROI (%d,%d) size=%d (%d pixels) - Min: %.1f°C, Max: %.1f°C, Avg: %.1f°C, Median: %.1f°C",
+             roi_center_row_, roi_center_col_, roi_size_, roi_pixel_count_, roi_min_temp_, roi_max_temp_, roi_avg_temp_,
+             roi_median_temp_);
+  } else {
+    ESP_LOGW(TAG, "ROI has no valid temperature readings");
+  }
+}
+
+// Runtime configuration update methods for ROI
+void GrowEnvMonitor::update_roi_enabled(bool enabled) {
+  roi_enabled_ = enabled;
+  ESP_LOGCONFIG(TAG, "ROI enabled: %s", enabled ? "true" : "false");
+}
+
+void GrowEnvMonitor::update_roi_center_row(int row) {
+  if (row >= 1 && row <= 24) {
+    roi_center_row_ = row;
+    ESP_LOGCONFIG(TAG, "ROI center row: %d", row);
+  }
+}
+
+void GrowEnvMonitor::update_roi_center_col(int col) {
+  if (col >= 1 && col <= 32) {
+    roi_center_col_ = col;
+    ESP_LOGCONFIG(TAG, "ROI center col: %d", col);
+  }
+}
+
+void GrowEnvMonitor::update_roi_size(int size) {
+  if (size >= 1 && size <= 10) {
+    roi_size_ = size;
+    ESP_LOGCONFIG(TAG, "ROI size: %d ((2*%d+1)x(2*%d+1) = %dx%d)", size, size, size, 2 * size + 1, 2 * size + 1);
+  }
 }
 
 }  // namespace grow_env_monitor
