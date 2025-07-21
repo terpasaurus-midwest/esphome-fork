@@ -43,6 +43,32 @@ void SCD4xAlerts::dump_config() {
 }
 
 void SCD4xAlerts::update_alerts_() {
+  // Sync thresholds from number entities if they exist
+  if (co2_high_threshold_number_ != nullptr && co2_high_threshold_number_->has_state()) {
+    co2_high_threshold_ = co2_high_threshold_number_->state;
+  }
+  if (co2_low_threshold_number_ != nullptr && co2_low_threshold_number_->has_state()) {
+    co2_low_threshold_ = co2_low_threshold_number_->state;
+  }
+  if (temp_high_threshold_number_ != nullptr && temp_high_threshold_number_->has_state()) {
+    temp_high_threshold_ = temp_high_threshold_number_->state;
+  }
+  if (temp_low_threshold_number_ != nullptr && temp_low_threshold_number_->has_state()) {
+    temp_low_threshold_ = temp_low_threshold_number_->state;
+  }
+  if (humidity_high_threshold_number_ != nullptr && humidity_high_threshold_number_->has_state()) {
+    humidity_high_threshold_ = humidity_high_threshold_number_->state;
+  }
+  if (humidity_low_threshold_number_ != nullptr && humidity_low_threshold_number_->has_state()) {
+    humidity_low_threshold_ = humidity_low_threshold_number_->state;
+  }
+  if (vpd_high_threshold_number_ != nullptr && vpd_high_threshold_number_->has_state()) {
+    vpd_high_threshold_ = vpd_high_threshold_number_->state;
+  }
+  if (vpd_low_threshold_number_ != nullptr && vpd_low_threshold_number_->has_state()) {
+    vpd_low_threshold_ = vpd_low_threshold_number_->state;
+  }
+
   update_co2_alerts_();
   update_temperature_alerts_();
   update_humidity_alerts_();

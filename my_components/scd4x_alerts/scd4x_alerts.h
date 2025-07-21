@@ -3,6 +3,7 @@
 #include "esphome/core/component.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/template/number/template_number.h"
 
 namespace esphome {
 namespace scd4x_alerts {
@@ -38,6 +39,18 @@ class SCD4xAlerts : public Component {
   void set_vpd_high_alert_sensor(binary_sensor::BinarySensor *sensor) { vpd_high_alert_sensor_ = sensor; }
   void set_vpd_low_alert_sensor(binary_sensor::BinarySensor *sensor) { vpd_low_alert_sensor_ = sensor; }
 
+  // Number entity setters
+  void set_co2_high_threshold_number(template_::TemplateNumber *number) { co2_high_threshold_number_ = number; }
+  void set_co2_low_threshold_number(template_::TemplateNumber *number) { co2_low_threshold_number_ = number; }
+  void set_temp_high_threshold_number(template_::TemplateNumber *number) { temp_high_threshold_number_ = number; }
+  void set_temp_low_threshold_number(template_::TemplateNumber *number) { temp_low_threshold_number_ = number; }
+  void set_humidity_high_threshold_number(template_::TemplateNumber *number) {
+    humidity_high_threshold_number_ = number;
+  }
+  void set_humidity_low_threshold_number(template_::TemplateNumber *number) { humidity_low_threshold_number_ = number; }
+  void set_vpd_high_threshold_number(template_::TemplateNumber *number) { vpd_high_threshold_number_ = number; }
+  void set_vpd_low_threshold_number(template_::TemplateNumber *number) { vpd_low_threshold_number_ = number; }
+
  protected:
   void update_alerts_();
   void update_co2_alerts_();
@@ -71,6 +84,16 @@ class SCD4xAlerts : public Component {
   binary_sensor::BinarySensor *humidity_low_alert_sensor_{nullptr};
   binary_sensor::BinarySensor *vpd_high_alert_sensor_{nullptr};
   binary_sensor::BinarySensor *vpd_low_alert_sensor_{nullptr};
+
+  // Threshold number entities
+  template_::TemplateNumber *co2_high_threshold_number_{nullptr};
+  template_::TemplateNumber *co2_low_threshold_number_{nullptr};
+  template_::TemplateNumber *temp_high_threshold_number_{nullptr};
+  template_::TemplateNumber *temp_low_threshold_number_{nullptr};
+  template_::TemplateNumber *humidity_high_threshold_number_{nullptr};
+  template_::TemplateNumber *humidity_low_threshold_number_{nullptr};
+  template_::TemplateNumber *vpd_high_threshold_number_{nullptr};
+  template_::TemplateNumber *vpd_low_threshold_number_{nullptr};
 
   // Alert state tracking for delays
   bool co2_high_last_state_{false};

@@ -20,6 +20,12 @@ CONF_ROI_AVG = "roi_avg"
 CONF_LIGHT_SENSOR = "light_sensor"
 CONF_MLX90640_COMPONENT = "mlx90640_component"
 
+# Alert binary sensors
+CONF_TEMP_HIGH_ALERT = "temp_high_alert"
+CONF_TEMP_LOW_ALERT = "temp_low_alert"
+CONF_HUMIDITY_HIGH_ALERT = "humidity_high_alert"
+CONF_HUMIDITY_LOW_ALERT = "humidity_low_alert"
+
 
 grow_env_monitor_ns = cg.esphome_ns.namespace("grow_env_monitor")
 GrowEnvMonitor = grow_env_monitor_ns.class_("GrowEnvMonitor", cg.Component)
@@ -48,6 +54,11 @@ CONFIG_SCHEMA = cv.Schema(
                 cv.Optional(CONF_LIGHT_SENSOR): cv.use_id(binary_sensor.BinarySensor),
             }
         ),
+        # Alert binary sensors (optional - connect to scd4x_alerts component)
+        cv.Optional(CONF_TEMP_HIGH_ALERT): cv.use_id(binary_sensor.BinarySensor),
+        cv.Optional(CONF_TEMP_LOW_ALERT): cv.use_id(binary_sensor.BinarySensor),
+        cv.Optional(CONF_HUMIDITY_HIGH_ALERT): cv.use_id(binary_sensor.BinarySensor),
+        cv.Optional(CONF_HUMIDITY_LOW_ALERT): cv.use_id(binary_sensor.BinarySensor),
     }
 )
 
@@ -100,3 +111,20 @@ async def to_code(config):
     if CONF_LIGHT_SENSOR in sensors:
         light_sensor = await cg.get_variable(sensors[CONF_LIGHT_SENSOR])
         cg.add(var.set_light_sensor(light_sensor))
+
+    # Set alert binary sensor references (optional)
+    if CONF_TEMP_HIGH_ALERT in config:
+        temp_high_alert = await cg.get_variable(config[CONF_TEMP_HIGH_ALERT])
+        cg.add(var.set_temp_high_alert_sensor(temp_high_alert))
+
+    if CONF_TEMP_LOW_ALERT in config:
+        temp_low_alert = await cg.get_variable(config[CONF_TEMP_LOW_ALERT])
+        cg.add(var.set_temp_low_alert_sensor(temp_low_alert))
+
+    if CONF_HUMIDITY_HIGH_ALERT in config:
+        humidity_high_alert = await cg.get_variable(config[CONF_HUMIDITY_HIGH_ALERT])
+        cg.add(var.set_humidity_high_alert_sensor(humidity_high_alert))
+
+    if CONF_HUMIDITY_LOW_ALERT in config:
+        humidity_low_alert = await cg.get_variable(config[CONF_HUMIDITY_LOW_ALERT])
+        cg.add(var.set_humidity_low_alert_sensor(humidity_low_alert))

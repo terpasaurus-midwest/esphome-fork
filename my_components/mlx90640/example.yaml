@@ -1,5 +1,6 @@
 # Example usage of the MLX90640 thermal camera component
-# This can work with any ESP32 board, not just M5Stack Core S3
+# This example shows the NEW auto-generated controls approach
+# No manual template sensors or controls needed!
 
 esphome:
   name: thermal-monitor
@@ -19,134 +20,85 @@ external_components:
       path: path/to/your/components  # Or GitHub URL
     components: [mlx90640]
 
-# Create template sensors for thermal data
-sensor:
-  - platform: template
-    name: "Thermal Min Temperature"
-    id: thermal_min
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "Thermal Max Temperature"
-    id: thermal_max
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "Thermal Average Temperature"
-    id: thermal_avg
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "ROI Min Temperature"
-    id: roi_min
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "ROI Max Temperature"
-    id: roi_max
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "ROI Average Temperature"
-    id: roi_avg
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-# MLX90640 thermal camera configuration
+# MLX90640 thermal camera - everything self-contained!
 mlx90640:
   id: thermal_camera
+  
+  # Hardware settings
   refresh_rate: "16Hz"        # 0.5Hz to 64Hz
   resolution: "18-bit"        # 16-bit to 19-bit
-  pattern: "chess"           # chess or interleaved
-  single_frame: false        # true for motion artifact reduction
-  thermal_palette: "rainbow"  # rainbow, golden, grayscale, ironblack, cam, ironbow, arctic, lava, whitehot, blackhot
-  update_interval: 10000     # Update every 10 seconds
-
-  # Optional: Web server JPEG endpoint
-  web_server:
-    enable: true              # Enable thermal image web endpoint
-    path: "/thermal.jpg"      # URL path for thermal image
-    width: 320                # Output image width (64-1024)
-    height: 240               # Output image height (48-768)
-    quality: 85               # JPEG quality (10-100)
-
-  # ROI (Region of Interest) for targeting specific areas
-  roi:
-    enabled: true
-    center_row: 12           # 1-24 (center of thermal array)
-    center_col: 16           # 1-32 (center of thermal array)
-    size: 3                  # Creates 7x7 ROI (2*3+1)
-
-  # Wire up sensors (optional - for Home Assistant integration)
-  temperature_min: thermal_min
-  temperature_max: thermal_max
-  temperature_avg: thermal_avg
-  roi_min: roi_min
-  roi_max: roi_max
-  roi_avg: roi_avg
-
-# Example: Access thermal data in other components
-# The MLX90640Component provides these methods:
-# - get_thermal_pixels() - raw 32x24 temperature array
-# - get_interpolated_pixels() - smoothed 64x48 array for display
-# - get_min_temp(), get_max_temp(), get_avg_temp()
-# - get_roi_min_temp(), get_roi_max_temp(), get_roi_avg_temp()
-# - is_roi_enabled(), get_roi_pixel_count()
-
-# Optional: Number controls for runtime ROI adjustment
-number:
-  - platform: template
+  pattern: "chess"            # chess (recommended) or interleaved
+  single_frame: false         # true for motion artifact reduction
+  update_interval: 10000      # Update every 10 seconds
+  
+  # Auto-generated temperature sensors (optional)
+  temperature_sensors:
+    min:
+      name: "Thermal Min Temperature"
+      accuracy_decimals: 1
+    max:
+      name: "Thermal Max Temperature"
+      accuracy_decimals: 1
+    avg:
+      name: "Thermal Average Temperature"
+      accuracy_decimals: 1
+    roi_min:
+      name: "ROI Min Temperature"
+      accuracy_decimals: 1
+    roi_max:
+      name: "ROI Max Temperature"
+      accuracy_decimals: 1
+    roi_avg:
+      name: "ROI Average Temperature"
+      accuracy_decimals: 1
+  
+  # Auto-generated user controls (optional - all settings persist across reboots!)
+  update_interval_control:
+    name: "Thermal Update Interval"
+    min_value: 100              # 100ms minimum
+    max_value: 30000            # 30 second maximum
+    step: 100                   # 100ms increments
+    restore_value: true         # Persist changes across reboots
+    
+  thermal_palette_control:
+    name: "Thermal Color Palette"
+    restore_value: true         # Persist changes across reboots
+    # Auto-populated with: rainbow, golden, grayscale, ironblack, cam, ironbow, arctic, lava, whitehot, blackhot
+    
+  roi_enabled_control:
+    name: "ROI Enabled"
+    restore_mode: RESTORE_DEFAULT_OFF  # Persist state across reboots
+    
+  roi_center_row_control:
     name: "ROI Center Row"
-    id: roi_center_row
     min_value: 1
     max_value: 24
     step: 1
-    initial_value: 12
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_row((int)x);"
-
-  - platform: template
+    restore_value: true         # Persist changes across reboots
+    
+  roi_center_col_control:
     name: "ROI Center Column"
-    id: roi_center_col
     min_value: 1
     max_value: 32
     step: 1
-    initial_value: 16
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_col((int)x);"
-
-  - platform: template
+    restore_value: true         # Persist changes across reboots
+    
+  roi_size_control:
     name: "ROI Size"
-    id: roi_size
     min_value: 1
     max_value: 10
     step: 1
-    initial_value: 3
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_size((int)x);"
-
-# Optional: Switch to enable/disable ROI
-switch:
-  - platform: template
-    name: "ROI Enabled"
-    id: roi_enabled
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    on_turn_on:
-      - lambda: "id(thermal_camera).update_roi_enabled(true);"
-    on_turn_off:
-      - lambda: "id(thermal_camera).update_roi_enabled(false);"
+    restore_value: true         # Persist changes across reboots
+  
+  # ROI static configuration (used as initial/fallback values)
+  roi:
+    enabled: false              # Start with ROI disabled
+    center_row: 12              # Center of 24-row thermal array
+    center_col: 16              # Center of 32-column thermal array
+    size: 3                     # Creates 7x7 ROI (2*3+1)
+  
+  # Optional: Web server JPEG endpoint for thermal image viewing
+  web_server:
+    enable: true
+    path: "/thermal.jpg"        # Access at http://device-ip/thermal.jpg
+    quality: 85                 # JPEG quality (10-100)
