@@ -147,7 +147,7 @@ m5cores3_power:
     name: "Battery Charging"
     id: battery_charging
 
-# MLX90640 thermal camera component (now separate from grow_env_monitor)
+# MLX90640 thermal camera component (now self-contained)
 mlx90640:
   id: thermal_camera
   refresh_rate: "16Hz"  # Higher performance testing
@@ -155,24 +155,110 @@ mlx90640:
   pattern: "chess"  # Better for even temperature distribution
   thermal_palette: "ironblack"  # Most intuitive color mapping
   single_frame: false  # Reduce motion artifacts
-  update_interval: 10000  # Update every 2 seconds
+  update_interval: 2000  # Update every 2 seconds
   web_server:
     enable: true
     path: "/thermal.jpg"
-    width: 320
-    height: 240
     quality: 80
   roi:
     enabled: false  # Start disabled, user can enable via web interface
-    center_row: 12  # Center of 24 rows (1-24 user range)
-    center_col: 16  # Center of 32 cols (1-32 user range)
-    size: 2  # 5x5 ROI (25 pixels)
-  temperature_min: mlx_min_temp
-  temperature_max: mlx_max_temp
-  temperature_avg: mlx_mean_temp
-  roi_min: mlx_roi_min_temp
-  roi_max: mlx_roi_max_temp
-  roi_avg: mlx_roi_avg_temp
+    center_row: 6  # Center of 24 rows (1-24 user range)
+    center_col: 6  # Center of 32 cols (1-32 user range)
+    size: 1  # 5x5 ROI (25 pixels)
+  
+  # Auto-generated temperature sensors
+  temperature_sensors:
+    min:
+      name: "MLX90640 Min temp"
+      id: mlx_min_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 10
+    max:
+      name: "MLX90640 Max temp"
+      id: mlx_max_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 20
+    avg:
+      name: "MLX90640 Mean temp"
+      id: mlx_mean_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 30
+    roi_min:
+      name: "MLX90640 ROI Min temp"
+      id: mlx_roi_min_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 40
+    roi_max:
+      name: "MLX90640 ROI Max temp"
+      id: mlx_roi_max_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 50
+    roi_avg:
+      name: "MLX90640 ROI Mean temp"
+      id: mlx_roi_avg_temp
+      web_server:
+        sorting_group_id: thermal_camera_group
+        sorting_weight: 60
+  
+  # Auto-generated user controls
+  update_interval_control:
+    name: "Thermal Update Interval"
+    id: thermal_update_interval_number
+    min_value: 100
+    max_value: 30000
+    step: 100
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 80
+      
+  thermal_palette_control:
+    name: "Thermal Color Palette"
+    id: thermal_palette_select
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 40
+      
+  roi_enabled_control:
+    name: "ROI Enabled"
+    id: roi_enabled_switch
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 120
+      
+  roi_center_row_control:
+    name: "ROI Center Row"
+    id: roi_center_row_number
+    min_value: 1
+    max_value: 24
+    step: 1
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 90
+      
+  roi_center_col_control:
+    name: "ROI Center Column"
+    id: roi_center_col_number
+    min_value: 1
+    max_value: 32
+    step: 1
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 100
+      
+  roi_size_control:
+    name: "ROI Size"
+    id: roi_size_number
+    min_value: 1
+    max_value: 10
+    step: 1
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 110
 
 grow_env_monitor:
   id: grow_monitor
@@ -190,6 +276,11 @@ grow_env_monitor:
     roi_max: mlx_roi_max_temp
     roi_avg: mlx_roi_avg_temp
     light_sensor: grow_light_on
+  # Connect to scd4x_alerts binary sensors for configurable thresholds
+  temp_high_alert: temp_high_alert
+  temp_low_alert: temp_low_alert
+  humidity_high_alert: humidity_high_alert
+  humidity_low_alert: humidity_low_alert
 # M5 Stack Touch Support
 m5cores3_touch:
   id: m5_touch
@@ -222,8 +313,6 @@ sensor:
       web_server:
         sorting_group_id: environmental_monitoring
         sorting_weight: 30
-
-  # MLX90640 Thermal Camera - real sensors are defined below as mlx_min_temp, mlx_max_temp, mlx_mean_temp
 
   # System monitoring
   - platform: uptime
@@ -259,61 +348,6 @@ sensor:
         sorting_group_id: diagnostics
         sorting_weight: 50
 
-  # MLX90640 sensors - will be updated by grow_env_monitor component
-  - platform: template
-    name: "MLX90640 Min temp"
-    id: mlx_min_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 10
-  - platform: template
-    name: "MLX90640 Max temp"
-    id: mlx_max_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 20
-  - platform: template
-    name: "MLX90640 Mean temp"
-    id: mlx_mean_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 30
-  - platform: template
-    name: "MLX90640 ROI Min temp"
-    id: mlx_roi_min_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 40
-  - platform: template
-    name: "MLX90640 ROI Max temp"
-    id: mlx_roi_max_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 50
-  - platform: template
-    name: "MLX90640 ROI Mean temp"
-    id: mlx_roi_avg_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 60
 
 scd4x_stats:
   id: co2_stats
@@ -420,129 +454,73 @@ scd4x_alerts:
     web_server:
       sorting_group_id: environmental_alerts
       sorting_weight: 100
-
-number:
-  - platform: template
+  co2_high_threshold_number:
     name: "CO2 High Threshold"
-    id: co2_high_threshold_number
-    min_value: 500
-    max_value: 2000
-    step: 50
-    initial_value: 1500
-    optimistic: true
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
     web_server:
       sorting_group_id: environmental_alerts
       sorting_weight: 10
-  - platform: template
+  co2_low_threshold_number:
     name: "CO2 Low Threshold"
-    id: co2_low_threshold_number
-    min_value: 400
-    max_value: 1000
-    step: 50
-    initial_value: 800
-    optimistic: true
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
     web_server:
       sorting_group_id: environmental_alerts
       sorting_weight: 20
-  - platform: template
-    name: "Thermal Update Interval"
-    id: thermal_update_interval_number
-    min_value: 100
-    max_value: 30000
-    step: 100
-    unit_of_measurement: "ms"
-    icon: "mdi:timer"
-    lambda: "return id(thermal_camera).get_update_interval();"
-    set_action:
-      - lambda: "id(thermal_camera).set_update_interval((uint32_t)x);"
+  temp_high_threshold_number:
+    name: "Temperature High Threshold"
     web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 80
+      sorting_group_id: environmental_alerts
+      sorting_weight: 25
+  temp_low_threshold_number:
+    name: "Temperature Low Threshold"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 35
+  humidity_high_threshold_number:
+    name: "Humidity High Threshold"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 45
+  humidity_low_threshold_number:
+    name: "Humidity Low Threshold"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 55
+  vpd_high_threshold_number:
+    name: "VPD High Threshold"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 65
+  vpd_low_threshold_number:
+    name: "VPD Low Threshold"
+    web_server:
+      sorting_group_id: environmental_alerts
+      sorting_weight: 75
+
+number:
   - platform: template
-    name: "ROI Center Row"
-    id: roi_center_row_number
-    min_value: 1
-    max_value: 24
+    name: "Dummy Template Number"
+    id: dummy_template_number
+    min_value: 0
+    max_value: 1
     step: 1
-    initial_value: 12
     optimistic: true
-    icon: "mdi:crosshairs-gps"
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 90
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_row((int)x);"
-  - platform: template
-    name: "ROI Center Column"
-    id: roi_center_col_number
-    min_value: 1
-    max_value: 32
-    step: 1
-    initial_value: 16
-    optimistic: true
-    icon: "mdi:crosshairs-gps"
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 100
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_col((int)x);"
-  - platform: template
-    name: "ROI Size"
-    id: roi_size_number
-    min_value: 1
-    max_value: 10
-    step: 1
-    initial_value: 2
-    optimistic: true
-    icon: "mdi:resize"
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 110
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_size((int)x);"
+    internal: true
 
 select:
   - platform: template
-    name: "Thermal Color Palette"
-    id: thermal_palette_select
-    optimistic: true
-    initial_option: "ironblack"
+    name: "Dummy Template Select"
+    id: dummy_template_select
     options:
-      - "rainbow"
-      - "golden"
-      - "grayscale"
-      - "ironblack"
-      - "cam"
-      - "ironbow"
-      - "arctic"
-      - "lava"
-      - "whitehot"
-      - "blackhot"
-    icon: "mdi:palette"
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 40
-    on_value:
-      - lambda: "id(thermal_camera).set_thermal_palette(x);"
+      - "Option 1"
+      - "Option 2"
+    optimistic: true
+    internal: true
 
 switch:
   - platform: template
-    name: "ROI Enabled"
-    id: roi_enabled_switch
+    name: "Dummy Template Switch"
+    id: dummy_template_switch
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    icon: "mdi:crop-free"
-    web_server:
-      sorting_group_id: thermal_camera_group
-      sorting_weight: 120
-    on_turn_on:
-      - lambda: "id(thermal_camera).update_roi_enabled(true);"
-    on_turn_off:
-      - lambda: "id(thermal_camera).update_roi_enabled(false);"
+    internal: true
 
 binary_sensor:
   # Light validation - hardware detection only

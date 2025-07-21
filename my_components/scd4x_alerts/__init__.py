@@ -1,5 +1,5 @@
 import esphome.codegen as cg
-from esphome.components import binary_sensor, sensor
+from esphome.components import binary_sensor, number, sensor
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_NAME
 
@@ -35,9 +35,17 @@ CONF_CO2_HIGH_THRESHOLD_NUMBER = "co2_high_threshold_number"
 CONF_CO2_LOW_THRESHOLD_NUMBER = "co2_low_threshold_number"
 CONF_TEMP_HIGH_THRESHOLD_NUMBER = "temp_high_threshold_number"
 CONF_TEMP_LOW_THRESHOLD_NUMBER = "temp_low_threshold_number"
+CONF_HUMIDITY_HIGH_THRESHOLD_NUMBER = "humidity_high_threshold_number"
+CONF_HUMIDITY_LOW_THRESHOLD_NUMBER = "humidity_low_threshold_number"
+CONF_VPD_HIGH_THRESHOLD_NUMBER = "vpd_high_threshold_number"
+CONF_VPD_LOW_THRESHOLD_NUMBER = "vpd_low_threshold_number"
 
 scd4x_alerts_ns = cg.esphome_ns.namespace("scd4x_alerts")
 SCD4xAlerts = scd4x_alerts_ns.class_("SCD4xAlerts", cg.Component)
+
+# Import TemplateNumber from template namespace
+template_ns = cg.esphome_ns.namespace("template_")
+TemplateNumber = template_ns.class_("TemplateNumber")
 
 
 def binary_sensor_schema(class_name):
@@ -88,6 +96,95 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_VPD_LOW_ALERT): binary_sensor_schema(
             binary_sensor.BinarySensor
+        ),
+        # Threshold number entities
+        cv.Optional(CONF_CO2_HIGH_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=500): cv.float_,
+                cv.Optional("max_value", default=2000): cv.float_,
+                cv.Optional("step", default=50): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_CO2_LOW_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=400): cv.float_,
+                cv.Optional("max_value", default=1000): cv.float_,
+                cv.Optional("step", default=50): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_TEMP_HIGH_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=15): cv.float_,
+                cv.Optional("max_value", default=40): cv.float_,
+                cv.Optional("step", default=0.5): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_TEMP_LOW_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=10): cv.float_,
+                cv.Optional("max_value", default=25): cv.float_,
+                cv.Optional("step", default=0.5): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_HUMIDITY_HIGH_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=30): cv.float_,
+                cv.Optional("max_value", default=90): cv.float_,
+                cv.Optional("step", default=1): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_HUMIDITY_LOW_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=10): cv.float_,
+                cv.Optional("max_value", default=60): cv.float_,
+                cv.Optional("step", default=1): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_VPD_HIGH_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=0.5): cv.float_,
+                cv.Optional("max_value", default=3.0): cv.float_,
+                cv.Optional("step", default=0.1): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
+        ),
+        cv.Optional(CONF_VPD_LOW_THRESHOLD_NUMBER): number.number_schema(
+            TemplateNumber
+        ).extend(
+            {
+                cv.Optional("min_value", default=0.1): cv.float_,
+                cv.Optional("max_value", default=1.0): cv.float_,
+                cv.Optional("step", default=0.1): cv.positive_float,
+                cv.Optional("optimistic", default=True): cv.boolean,
+                cv.Optional("restore_value", default=True): cv.boolean,
+            }
         ),
     }
 )
@@ -155,5 +252,131 @@ async def to_code(config):
         sens = await binary_sensor.new_binary_sensor(config[CONF_VPD_LOW_ALERT])
         cg.add(var.set_vpd_low_alert_sensor(sens))
 
-    # Configure threshold number entities - simplified to avoid abstract number issues
-    # These will be handled by separate template number components in the YAML config
+    # Configure threshold number entities
+    if CONF_CO2_HIGH_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_CO2_HIGH_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_co2_high_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_CO2_HIGH_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("ppm"))
+
+    if CONF_CO2_LOW_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_CO2_LOW_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_co2_low_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_CO2_LOW_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("ppm"))
+
+    if CONF_TEMP_HIGH_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_TEMP_HIGH_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_temp_high_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_TEMP_HIGH_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("°C"))
+
+    if CONF_TEMP_LOW_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_TEMP_LOW_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_temp_low_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_TEMP_LOW_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("°C"))
+
+    if CONF_HUMIDITY_HIGH_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_HUMIDITY_HIGH_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_humidity_high_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_HUMIDITY_HIGH_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("%"))
+
+    if CONF_HUMIDITY_LOW_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_HUMIDITY_LOW_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_humidity_low_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_HUMIDITY_LOW_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("%"))
+
+    if CONF_VPD_HIGH_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_VPD_HIGH_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_vpd_high_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_VPD_HIGH_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("kPa"))
+
+    if CONF_VPD_LOW_THRESHOLD_NUMBER in config:
+        num_config = config[CONF_VPD_LOW_THRESHOLD_NUMBER]
+        num = cg.new_Pvariable(num_config[CONF_ID])
+        await number.register_number(
+            num,
+            num_config,
+            min_value=num_config["min_value"],
+            max_value=num_config["max_value"],
+            step=num_config["step"],
+        )
+        cg.add(var.set_vpd_low_threshold_number(num))
+        cg.add(num.set_initial_value(config[CONF_VPD_LOW_THRESHOLD]))
+        cg.add(num.set_optimistic(num_config["optimistic"]))
+        cg.add(num.set_restore_value(num_config["restore_value"]))
+        cg.add(num.traits.set_unit_of_measurement("kPa"))

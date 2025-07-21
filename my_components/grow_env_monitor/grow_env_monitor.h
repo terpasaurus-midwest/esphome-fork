@@ -30,6 +30,12 @@ class GrowEnvMonitor : public Component {
   void set_light_sensor(binary_sensor::BinarySensor *light_sensor) { light_sensor_ = light_sensor; }
   void set_mlx90640_component(mlx90640::MLX90640Component *mlx90640) { mlx90640_component_ = mlx90640; }
 
+  // Alert binary sensor setters
+  void set_temp_high_alert_sensor(binary_sensor::BinarySensor *sensor) { temp_high_alert_sensor_ = sensor; }
+  void set_temp_low_alert_sensor(binary_sensor::BinarySensor *sensor) { temp_low_alert_sensor_ = sensor; }
+  void set_humidity_high_alert_sensor(binary_sensor::BinarySensor *sensor) { humidity_high_alert_sensor_ = sensor; }
+  void set_humidity_low_alert_sensor(binary_sensor::BinarySensor *sensor) { humidity_low_alert_sensor_ = sensor; }
+
  protected:
   void draw_screen_();
   void draw_sensor_data_();
@@ -64,6 +70,12 @@ class GrowEnvMonitor : public Component {
   sensor::Sensor *roi_avg_sensor_{nullptr};
   binary_sensor::BinarySensor *light_sensor_{nullptr};
   mlx90640::MLX90640Component *mlx90640_component_{nullptr};
+
+  // Alert binary sensors
+  binary_sensor::BinarySensor *temp_high_alert_sensor_{nullptr};
+  binary_sensor::BinarySensor *temp_low_alert_sensor_{nullptr};
+  binary_sensor::BinarySensor *humidity_high_alert_sensor_{nullptr};
+  binary_sensor::BinarySensor *humidity_low_alert_sensor_{nullptr};
 
   // Previous values for selective redrawing
   float prev_co2_{NAN};

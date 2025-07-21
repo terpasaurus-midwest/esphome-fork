@@ -1,7 +1,11 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/number/number.h"
+#include "esphome/components/select/select.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
@@ -59,8 +63,6 @@ class MLX90640Component : public Component {
   // Web server configuration
   void set_web_server_enabled(bool enabled) { web_server_enabled_ = enabled; }
   void set_web_server_path(const std::string &path) { web_server_path_ = path; }
-  void set_web_server_width(int width) { web_server_width_ = width; }
-  void set_web_server_height(int height) { web_server_height_ = height; }
   void set_web_server_quality(int quality) { web_server_quality_ = quality; }
 
   // Sensor setters
@@ -70,6 +72,14 @@ class MLX90640Component : public Component {
   void set_roi_min_sensor(sensor::Sensor *sensor) { roi_min_sensor_ = sensor; }
   void set_roi_max_sensor(sensor::Sensor *sensor) { roi_max_sensor_ = sensor; }
   void set_roi_avg_sensor(sensor::Sensor *sensor) { roi_avg_sensor_ = sensor; }
+
+  // Auto-generated control entity setters
+  void set_update_interval_control(number::Number *control) { update_interval_control_ = control; }
+  void set_thermal_palette_control(select::Select *control) { thermal_palette_control_ = control; }
+  void set_roi_enabled_control(switch_::Switch *control) { roi_enabled_control_ = control; }
+  void set_roi_center_row_control(number::Number *control) { roi_center_row_control_ = control; }
+  void set_roi_center_col_control(number::Number *control) { roi_center_col_control_ = control; }
+  void set_roi_size_control(number::Number *control) { roi_size_control_ = control; }
 
   // Data access methods for external components
   bool is_initialized() const { return initialized_; }
@@ -93,6 +103,7 @@ class MLX90640Component : public Component {
 
   // Thermal color mapping
   void set_thermal_palette(const std::string &palette);
+  const std::string &get_thermal_palette() const { return thermal_palette_; }
   uint16_t temp_to_color(float temperature, float min_temp, float max_temp) const;
 
   // ROI overlay coordinate calculation (hardware-agnostic)
@@ -149,8 +160,6 @@ class MLX90640Component : public Component {
   // Web server configuration
   bool web_server_enabled_{false};
   std::string web_server_path_{"/thermal.jpg"};
-  int web_server_width_{320};
-  int web_server_height_{240};
   int web_server_quality_{85};
   web_server_base::WebServerBase *base_;
 
@@ -186,6 +195,14 @@ class MLX90640Component : public Component {
   sensor::Sensor *roi_max_sensor_{nullptr};
   sensor::Sensor *roi_avg_sensor_{nullptr};
 
+  // Auto-generated control entities (optional)
+  number::Number *update_interval_control_{nullptr};
+  select::Select *thermal_palette_control_{nullptr};
+  switch_::Switch *roi_enabled_control_{nullptr};
+  number::Number *roi_center_row_control_{nullptr};
+  number::Number *roi_center_col_control_{nullptr};
+  number::Number *roi_size_control_{nullptr};
+
   // Timing
   uint32_t last_update_time_{0};
 
@@ -200,6 +217,68 @@ class MLX90640Component : public Component {
   static const uint16_t thermal_palette_lava_[256] PROGMEM;
   static const uint16_t thermal_palette_whitehot_[256] PROGMEM;
   static const uint16_t thermal_palette_blackhot_[256] PROGMEM;
+};
+
+// Control type enum for MLX90640 components
+enum MLX90640ControlType { UPDATE_INTERVAL, ROI_CENTER_ROW, ROI_CENTER_COL, ROI_SIZE, THERMAL_PALETTE, ROI_ENABLED };
+
+// MLX90640Number - handles numeric controls (update interval, ROI settings)
+class MLX90640Number : public number::Number, public Component {
+ public:
+  void set_mlx90640_parent(MLX90640Component *parent) { parent_ = parent; }
+  void set_control_type(MLX90640ControlType type) { control_type_ = type; }
+
+  // Configuration methods (similar to template number)
+  void set_restore_value(bool restore_value) { restore_value_ = restore_value; }
+  void set_initial_value(float initial_value) { initial_value_ = initial_value; }
+
+  void setup() override;
+
+ protected:
+  void control(float value) override;
+
+ private:
+  MLX90640Component *parent_{nullptr};
+  MLX90640ControlType control_type_;
+  bool restore_value_{false};
+  float initial_value_{NAN};
+  ESPPreferenceObject pref_;
+};
+
+// MLX90640Select - handles thermal palette selection
+class MLX90640Select : public select::Select, public Component {
+ public:
+  void set_mlx90640_parent(MLX90640Component *parent) { parent_ = parent; }
+
+  // Configuration methods (similar to template select)
+  void set_restore_value(bool restore_value) { restore_value_ = restore_value; }
+  void set_initial_option(const std::string &initial_option) { initial_option_ = initial_option; }
+
+  void setup() override;
+
+ protected:
+  void control(const std::string &value) override;
+
+ private:
+  MLX90640Component *parent_{nullptr};
+  bool restore_value_{false};
+  std::string initial_option_;
+  ESPPreferenceObject pref_;
+};
+
+// MLX90640Switch - handles ROI enabled control
+class MLX90640Switch : public switch_::Switch, public Component {
+ public:
+  void set_mlx90640_parent(MLX90640Component *parent) { parent_ = parent; }
+  void set_restore_mode(switch_::SwitchRestoreMode restore_mode) { this->restore_mode = restore_mode; }
+
+  void setup() override;
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  MLX90640Component *parent_{nullptr};
 };
 
 }  // namespace mlx90640

@@ -100,9 +100,17 @@ void GrowEnvMonitor::draw_sensor_data_() {
   // Temperature Data
   if (temperature_sensor_ && temperature_sensor_->has_state()) {
     float temp = temperature_sensor_->state;
-    uint16_t temp_color = (temp > 30 || temp < 18)   ? COLOR_ALERT
-                          : (temp > 28 || temp < 20) ? COLOR_WARNING
-                                                     : COLOR_GOOD;
+    uint16_t temp_color = COLOR_GOOD;
+
+    // Use binary sensors for color if available
+    if (temp_high_alert_sensor_ && temp_high_alert_sensor_->has_state() && temp_high_alert_sensor_->state) {
+      temp_color = COLOR_ALERT;
+    } else if (temp_low_alert_sensor_ && temp_low_alert_sensor_->has_state() && temp_low_alert_sensor_->state) {
+      temp_color = COLOR_ALERT;
+    } else if (!temp_high_alert_sensor_ && !temp_low_alert_sensor_) {
+      // Fallback to hardcoded thresholds if no binary sensors
+      temp_color = (temp > 30 || temp < 18) ? COLOR_ALERT : (temp > 28 || temp < 20) ? COLOR_WARNING : COLOR_GOOD;
+    }
 
     M5.Display.setCursor(MARGIN, y);
     M5.Display.setTextColor(COLOR_TEXT);
@@ -121,9 +129,20 @@ void GrowEnvMonitor::draw_sensor_data_() {
   // Humidity Data
   if (humidity_sensor_ && humidity_sensor_->has_state()) {
     float humidity = humidity_sensor_->state;
-    uint16_t humidity_color = (humidity > 70 || humidity < 40)   ? COLOR_ALERT
-                              : (humidity > 65 || humidity < 45) ? COLOR_WARNING
-                                                                 : COLOR_GOOD;
+    uint16_t humidity_color = COLOR_GOOD;
+
+    // Use binary sensors for color if available
+    if (humidity_high_alert_sensor_ && humidity_high_alert_sensor_->has_state() && humidity_high_alert_sensor_->state) {
+      humidity_color = COLOR_ALERT;
+    } else if (humidity_low_alert_sensor_ && humidity_low_alert_sensor_->has_state() &&
+               humidity_low_alert_sensor_->state) {
+      humidity_color = COLOR_ALERT;
+    } else if (!humidity_high_alert_sensor_ && !humidity_low_alert_sensor_) {
+      // Fallback to hardcoded thresholds if no binary sensors
+      humidity_color = (humidity > 70 || humidity < 40)   ? COLOR_ALERT
+                       : (humidity > 65 || humidity < 45) ? COLOR_WARNING
+                                                          : COLOR_GOOD;
+    }
 
     M5.Display.setCursor(MARGIN, y);
     M5.Display.setTextColor(COLOR_TEXT);
@@ -271,8 +290,22 @@ void GrowEnvMonitor::draw_alerts_() {
     }
   }
 
-  // Temperature Alerts
-  if (temperature_sensor_ && temperature_sensor_->has_state()) {
+  // Temperature Alerts - use binary sensors if available, otherwise fallback to hardcoded thresholds
+  if (temp_high_alert_sensor_ && temp_high_alert_sensor_->has_state() && temp_high_alert_sensor_->state) {
+    M5.Display.setCursor(MARGIN, y);
+    M5.Display.setTextColor(COLOR_ALERT);
+    M5.Display.println("Temperature High");
+    y += LINE_HEIGHT;
+    has_alerts = true;
+  } else if (temp_low_alert_sensor_ && temp_low_alert_sensor_->has_state() && temp_low_alert_sensor_->state) {
+    M5.Display.setCursor(MARGIN, y);
+    M5.Display.setTextColor(COLOR_ALERT);
+    M5.Display.println("Temperature Low");
+    y += LINE_HEIGHT;
+    has_alerts = true;
+  } else if (!temp_high_alert_sensor_ && !temp_low_alert_sensor_ && temperature_sensor_ &&
+             temperature_sensor_->has_state()) {
+    // Fallback to hardcoded thresholds only if no alert sensors are configured
     float temp = temperature_sensor_->state;
     if (temp > 30) {
       M5.Display.setCursor(MARGIN, y);
@@ -301,8 +334,23 @@ void GrowEnvMonitor::draw_alerts_() {
     }
   }
 
-  // Humidity Alerts
-  if (humidity_sensor_ && humidity_sensor_->has_state()) {
+  // Humidity Alerts - use binary sensors if available, otherwise fallback to hardcoded thresholds
+  if (humidity_high_alert_sensor_ && humidity_high_alert_sensor_->has_state() && humidity_high_alert_sensor_->state) {
+    M5.Display.setCursor(MARGIN, y);
+    M5.Display.setTextColor(COLOR_ALERT);
+    M5.Display.println("Humidity High");
+    y += LINE_HEIGHT;
+    has_alerts = true;
+  } else if (humidity_low_alert_sensor_ && humidity_low_alert_sensor_->has_state() &&
+             humidity_low_alert_sensor_->state) {
+    M5.Display.setCursor(MARGIN, y);
+    M5.Display.setTextColor(COLOR_ALERT);
+    M5.Display.println("Humidity Low");
+    y += LINE_HEIGHT;
+    has_alerts = true;
+  } else if (!humidity_high_alert_sensor_ && !humidity_low_alert_sensor_ && humidity_sensor_ &&
+             humidity_sensor_->has_state()) {
+    // Fallback to hardcoded thresholds only if no alert sensors are configured
     float humidity = humidity_sensor_->state;
     if (humidity > 70) {
       M5.Display.setCursor(MARGIN, y);
@@ -347,12 +395,35 @@ float GrowEnvMonitor::calculate_vpd_(float temperature, float humidity) {
 }
 
 uint16_t GrowEnvMonitor::get_status_color_(float co2, float temp, float humidity) {
-  // Check for alert conditions
-  if (co2 > 1500 || temp > 30 || temp < 18 || humidity > 70 || humidity < 40) {
+  // Check for alert conditions using binary sensors if available, otherwise use hardcoded thresholds
+  bool temp_alert = false;
+  bool humidity_alert = false;
+
+  // Check temperature alerts
+  if (temp_high_alert_sensor_ && temp_high_alert_sensor_->has_state()) {
+    temp_alert = temp_high_alert_sensor_->state;
+  } else if (temp_low_alert_sensor_ && temp_low_alert_sensor_->has_state()) {
+    temp_alert = temp_low_alert_sensor_->state;
+  } else {
+    // Fallback to hardcoded thresholds
+    temp_alert = (temp > 30 || temp < 18);
+  }
+
+  // Check humidity alerts
+  if (humidity_high_alert_sensor_ && humidity_high_alert_sensor_->has_state()) {
+    humidity_alert = humidity_high_alert_sensor_->state;
+  } else if (humidity_low_alert_sensor_ && humidity_low_alert_sensor_->has_state()) {
+    humidity_alert = humidity_low_alert_sensor_->state;
+  } else {
+    // Fallback to hardcoded thresholds
+    humidity_alert = (humidity > 70 || humidity < 40);
+  }
+
+  if (co2 > 1500 || temp_alert || humidity_alert) {
     return COLOR_ALERT;
   }
 
-  // Check for warning conditions
+  // Check for warning conditions (using hardcoded thresholds for now)
   if (co2 > 1000 || temp > 28 || temp < 20 || humidity > 65 || humidity < 45) {
     return COLOR_WARNING;
   }
@@ -643,9 +714,18 @@ void GrowEnvMonitor::draw_temperature_value_() {
 
   if (temperature_sensor_ && temperature_sensor_->has_state()) {
     float temp = temperature_sensor_->state;
-    uint16_t temp_color = (temp > 30 || temp < 18)   ? COLOR_ALERT
-                          : (temp > 28 || temp < 20) ? COLOR_WARNING
-                                                     : COLOR_GOOD;
+    uint16_t temp_color = COLOR_GOOD;
+
+    // Use binary sensors for color if available
+    if (temp_high_alert_sensor_ && temp_high_alert_sensor_->has_state() && temp_high_alert_sensor_->state) {
+      temp_color = COLOR_ALERT;
+    } else if (temp_low_alert_sensor_ && temp_low_alert_sensor_->has_state() && temp_low_alert_sensor_->state) {
+      temp_color = COLOR_ALERT;
+    } else if (!temp_high_alert_sensor_ && !temp_low_alert_sensor_) {
+      // Fallback to hardcoded thresholds if no binary sensors
+      temp_color = (temp > 30 || temp < 18) ? COLOR_ALERT : (temp > 28 || temp < 20) ? COLOR_WARNING : COLOR_GOOD;
+    }
+
     M5.Display.setTextColor(temp_color);
     M5.Display.print(temp, 1);
     M5.Display.setTextColor(COLOR_TEXT);
@@ -669,9 +749,21 @@ void GrowEnvMonitor::draw_humidity_value_() {
 
   if (humidity_sensor_ && humidity_sensor_->has_state()) {
     float humidity = humidity_sensor_->state;
-    uint16_t humidity_color = (humidity > 70 || humidity < 40)   ? COLOR_ALERT
-                              : (humidity > 65 || humidity < 45) ? COLOR_WARNING
-                                                                 : COLOR_GOOD;
+    uint16_t humidity_color = COLOR_GOOD;
+
+    // Use binary sensors for color if available
+    if (humidity_high_alert_sensor_ && humidity_high_alert_sensor_->has_state() && humidity_high_alert_sensor_->state) {
+      humidity_color = COLOR_ALERT;
+    } else if (humidity_low_alert_sensor_ && humidity_low_alert_sensor_->has_state() &&
+               humidity_low_alert_sensor_->state) {
+      humidity_color = COLOR_ALERT;
+    } else if (!humidity_high_alert_sensor_ && !humidity_low_alert_sensor_) {
+      // Fallback to hardcoded thresholds if no binary sensors
+      humidity_color = (humidity > 70 || humidity < 40)   ? COLOR_ALERT
+                       : (humidity > 65 || humidity < 45) ? COLOR_WARNING
+                                                          : COLOR_GOOD;
+    }
+
     M5.Display.setTextColor(humidity_color);
     M5.Display.print(humidity, 1);
     M5.Display.setTextColor(COLOR_TEXT);

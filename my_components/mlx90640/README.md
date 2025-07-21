@@ -1,8 +1,12 @@
-# MLX90640 Thermal Camera Component for ESPHome
+# MLX90640 Thermal Imaging Component
 
-A standalone ESPHome component for the Melexis MLX90640 thermal imaging camera with advanced ROI (Region of Interest) functionality.
+A standalone ESPHome component exposing and enhancing the Melexis MLX90640 thermal temperature imaging device's capabilities in ESPHome.
+
+The concept is to expose all the useful functionality from the Melexis driver into configurable ESPHome entities. And to provide a framework to build additional features enhancing the implementation.
 
 ## Features
+
+This component provides comprehensive MLX90640 thermal imaging capabilities with several unique features not found in existing ESPHome implementations:
 
 ### 🌡️ **Complete Thermal Imaging**
 - **32×24 pixel thermal array** with temperature range -40°C to 85°C
@@ -10,30 +14,48 @@ A standalone ESPHome component for the Melexis MLX90640 thermal imaging camera w
 - **Multiple resolution modes** (16-bit to 19-bit)
 - **Chess/Interleaved readout patterns** for optimal performance
 - **Bad pixel correction** and frame synchronization
+- **Synchronized data acquisition** - no blank or incomplete images due to timing issues 
 
-### 🎯 **ROI (Region of Interest) Support**
-- **Precise area selection** using 1-based coordinates (1-24 rows, 1-32 columns)
-- **Configurable ROI size** with scaling factor (1-10 pixels around center)
-- **Independent temperature statistics** for ROI vs full-frame
-- **Real-time ROI adjustment** via ESPHome number/switch controls
-- **Perfect for agriculture** - target leaf temperatures while excluding hot objects
+### 🎯 **Advanced ROI (Region of Interest) Support**
+- **Configurable square area** with adjustable position and size within the thermal image
+- **Independent temperature statistics** with dedicated sensor entities for ROI min/max/avg temperatures
+- **Real-time ROI adjustment** via ESPHome number/switch controls with persistence across reboots
+- **Filter out outliers** - exclude excessively hot or cold objects that would invalidate temperature measurements
+- **Perfect for agriculture** - target leaf temperatures while excluding hot lights, buds, and equipment
+
+### 🎨 **Configurable Thermographic Color Palettes**
+- **Multiple color palette options** (rainbow, golden, grayscale, ironblack, cam, ironbow, arctic, lava, whitehot, blackhot)
+- **Runtime palette switching** via drop-down select entity in ESPHome web UI
+- **Hot-swappable without restart** - changes apply immediately
+- **Persistent across reboots** when configured with restore_value: true
+- **Web server JPEG endpoint** for thermal image viewing with selectable quality
 
 ### 🔗 **ESPHome Integration**
-- **Template sensor support** for Home Assistant integration
-- **Runtime configuration** via web interface
-- **Memory optimized** with stack overflow protection
-- **Clean API** for use in other components
+- **Auto-generated sensors and controls** - no manual template configuration needed
+- **Runtime configuration** via web interface with persistent settings
+- **Clean API** for use in custom components (e.g., drawing thermal images on displays)
+- **Home Assistant integration** ready out of the box
 
 ## Hardware Requirements
 
-- **ESP32 microcontroller** (any variant)
+- **ESP32 microcontroller**
 - **MLX90640 thermal camera** connected via I2C
 - **I2C connection**: SDA and SCL pins (configurable)
-- **3.3V power supply** for MLX90640 (typically 200mA+)
+- **3.3V power supply** for MLX90640
 
 ## Installation
 
-### Option 1: Local Component
+### Option 1: GitHub Reference
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/terpasaurus-midwest/esphome-fork
+      ref: m5stack
+    components: [mlx90640]
+```
+
+### Option 2: Local Component
 ```yaml
 external_components:
   - source:
@@ -42,156 +64,149 @@ external_components:
     components: [mlx90640]
 ```
 
-### Option 2: GitHub Reference
-```yaml
-external_components:
-  - source:
-      type: git
-      url: https://github.com/your-repo/esphome-components
-    components: [mlx90640]
-```
-
 ## Basic Configuration
 
 ```yaml
-# Required I2C bus
+# Required I2C bus (M5Stack Core S3 pins used for this example)
 i2c:
-  sda: 21
-  scl: 22
+  sda: 21  # change to match your ESP hardware
+  scl: 22  # change to match your ESP hardware
   scan: true
-
-# Template sensors for thermal data
-sensor:
-  - platform: template
-    name: "Thermal Min Temperature"
-    id: thermal_min
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "Thermal Max Temperature"
-    id: thermal_max
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-
-  - platform: template
-    name: "Thermal Average Temperature"
-    id: thermal_avg
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
 
 # MLX90640 component
 mlx90640:
   id: thermal_camera
-  refresh_rate: "16Hz"
-  resolution: "18-bit"
-  pattern: "chess"
-  single_frame: false
-  update_interval: 10000  # 10 seconds
+  refresh_rate: "16Hz"        # Optional, defaults to 16Hz
+  resolution: "18-bit"        # Optional, defaults to 18-bit
+  pattern: "chess"            # Optional, defaults to chess
+  single_frame: false         # Optional, defaults to false
+  update_interval: 2000       # Static value in milliseconds
   
-  # Optional: Wire up sensors
-  temperature_min: thermal_min
-  temperature_max: thermal_max
-  temperature_avg: thermal_avg
+  # Web server for thermal image viewing (optional)
+  web_server:
+    enable: true
+    path: "/thermal.jpg"
+    quality: 80               # JPEG quality 10-100
 ```
 
-## ROI Configuration
+## Full Configuration Reference
 
-Perfect for agricultural applications like cannabis growing where you need to measure leaf temperatures while excluding hot buds:
+Everything here is optional/implied, but all options are provided here in case you need to change anything.
+
+Just because you can change something, does not mean it will work. For example:
+* 32Hz refresh rate and above is known to make the hardware stop working.
+  * Slower refresh rates with faster update intervals provide better temperature accuracy than faster refresh rates. Review the Melexis datasheet before using this product for serious business.
+* Melexis did not calibrate the sensor for a resolution other than 18-bit and a pattern other than chess.
+* Using single-frame mode can be helpful if you need to prioritize fast motion performance in your image frame, but it will decrease your temperature measurement accuracy. It is not advised for horticulture and similar use.
 
 ```yaml
 mlx90640:
   id: thermal_camera
-  # ... basic config ...
+  refresh_rate: "16Hz"        # Optional, defaults to 16Hz
+  resolution: "18-bit"        # Optional, defaults to 18-bit
+  pattern: "chess"            # Optional, defaults to chess
+  single_frame: false         # Optional, defaults to false
+  update_interval: 2000       # Static value in milliseconds
   
-  # ROI for targeting specific areas
+  # Web server for thermal image viewing (optional)
+  web_server:
+    enable: true
+    path: "/thermal.jpg"
+    quality: 80               # JPEG quality 10-100
+  
+  # Auto-generated temperature sensors (optional)
+  temperature_sensors:
+    min:
+      name: "Thermal Min Temperature"
+    max:
+      name: "Thermal Max Temperature"
+    avg:
+      name: "Thermal Average Temperature"
+    roi_min:
+      name: "ROI Min Temperature"
+    roi_max:
+      name: "ROI Max Temperature"
+    roi_avg:
+      name: "ROI Average Temperature"
+  
+  # Auto-generated user controls (optional)
+  update_interval_control:
+    name: "Thermal Update Interval"
+    min_value: 100              # Optional, defaults to 100ms
+    max_value: 30000            # Optional, defaults to 30000ms
+    restore_value: true         # Optional, enables persistence
+    
+  thermal_palette_control:
+    name: "Thermal Color Palette"
+    restore_value: true         # Optional, enables/disables persistence
+    
+  # ROI configuration (optional)
   roi:
-    enabled: true
-    center_row: 12        # Center of thermal array (1-24)
-    center_col: 16        # Center of thermal array (1-32)
-    size: 3               # Creates 7×7 ROI (2*3+1)
-  
-  # ROI sensors
-  roi_min: roi_min_temp
-  roi_max: roi_max_temp
-  roi_avg: roi_avg_temp
-
-# ROI template sensors
-sensor:
-  - platform: template
-    name: "ROI Min Temperature"
-    id: roi_min_temp
-    unit_of_measurement: "°C"
-    device_class: temperature
-```
-
-## Runtime Controls
-
-Add number and switch controls for dynamic ROI adjustment:
-
-```yaml
-number:
-  - platform: template
-    name: "ROI Center Row"
-    min_value: 1
-    max_value: 24
-    step: 1
-    initial_value: 12
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_row((int)x);"
-
-  - platform: template
-    name: "ROI Center Column"
-    min_value: 1
-    max_value: 32
-    step: 1
-    initial_value: 16
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_center_col((int)x);"
-
-  - platform: template
-    name: "ROI Size"
-    min_value: 1
-    max_value: 10
-    step: 1
-    initial_value: 3
-    optimistic: true
-    on_value:
-      - lambda: "id(thermal_camera).update_roi_size((int)x);"
-
-switch:
-  - platform: template
+    enabled: false
+    center_row: 12
+    center_col: 16
+    size: 2
+    
+  # ROI runtime controls (optional)
+  roi_enabled_control:
     name: "ROI Enabled"
-    optimistic: true
-    on_turn_on:
-      - lambda: "id(thermal_camera).update_roi_enabled(true);"
-    on_turn_off:
-      - lambda: "id(thermal_camera).update_roi_enabled(false);"
+    restore_mode: RESTORE_DEFAULT_OFF  # Optional, enables persistence
+    
+  roi_center_row_control:
+    name: "ROI Center Row"
+    restore_value: true         # Optional, enables persistence
+    
+  roi_center_col_control:
+    name: "ROI Center Column"
+    restore_value: true         # Optional, enables persistence
+    
+  roi_size_control:
+    name: "ROI Size"
+    restore_value: true         # Optional, enables persistence
 ```
 
-## Configuration Options
+## Configuration Reference
 
-### Basic Settings
-- **`refresh_rate`**: `"0.5Hz"`, `"1Hz"`, `"2Hz"`, `"4Hz"`, `"8Hz"`, `"16Hz"`, `"32Hz"`, `"64Hz"`
-- **`resolution`**: `"16-bit"`, `"17-bit"`, `"18-bit"`, `"19-bit"`
-- **`pattern`**: `"chess"` (recommended), `"interleaved"`
-- **`single_frame`**: `true` (faster, checkerboard), `false` (better quality)
-- **`update_interval`**: Update frequency in milliseconds
+### Hardware Settings (Static)
+- **`refresh_rate`**: `"0.5Hz"` to `"64Hz"` - thermal sensor refresh rate
+- **`resolution`**: `"16-bit"` to `"19-bit"` - thermal sensor precision
+- **`pattern`**: `"chess"` (recommended) or `"interleaved"` - readout pattern
+- **`single_frame`**: `false` (better quality, accuracy) or `true` (faster, less accurate)
+- **`update_interval`**: Static update frequency in milliseconds
 
-### ROI Settings
-- **`roi.enabled`**: Enable/disable ROI processing
-- **`roi.center_row`**: ROI center row (1-24)
-- **`roi.center_col`**: ROI center column (1-32) 
-- **`roi.size`**: ROI scaling factor (1-10, creates (2n+1)×(2n+1) square)
+### Auto-Generated Sensors
+Configure `temperature_sensors` with any combination of:
+- **`min`**, **`max`**, **`avg`**: Full-frame temperature statistics
+- **`roi_min`**, **`roi_max`**, **`roi_avg`**: ROI-specific temperature statistics
 
-### Sensor Connections
-- **`temperature_min/max/avg`**: Full-frame temperature sensors
-- **`roi_min/max/avg`**: ROI-specific temperature sensors
+Each sensor supports standard sensor options: `name`, `id`, `accuracy_decimals`, etc.
+
+### Auto-Generated Controls
+Configure user controls with these options:
+- **`update_interval_control`**: Runtime thermal update interval control (Number)
+- **`thermal_palette_control`**: Runtime color palette selection (Select)
+- **`roi_enabled_control`**: Runtime ROI enable/disable (Switch)
+- **`roi_center_row_control`**: Runtime ROI center row adjustment (Number)
+- **`roi_center_col_control`**: Runtime ROI center column adjustment (Number)
+- **`roi_size_control`**: Runtime ROI size adjustment (Number)
+
+Each control supports standard ESPHome options: `name`, `id`, web_server grouping, etc.
+
+### Persistence Options
+- **Number/Select controls**: Use `restore_value: true` to persist changes across reboots
+- **Switch controls**: Use `restore_mode: RESTORE_DEFAULT_OFF/ON` to persist state across reboots
+- **Default behavior**: Without persistence options, controls revert to YAML-configured initial values on reboot
+
+### ROI Configuration
+- **`roi.enabled`**: Initial ROI enable state
+- **`roi.center_row`**: Initial ROI center (1-24)
+- **`roi.center_col`**: Initial ROI center (1-32)
+- **`roi.size`**: Initial ROI size (1-10, creates (2n+1)×(2n+1) square)
+
+### Web Server
+- **`web_server.enable`**: Enable thermal image HTTP endpoint
+- **`web_server.path`**: Image URL path (default "/thermal.jpg")
+- **`web_server.quality`**: JPEG quality 10-100
 
 ## API for Custom Components
 
@@ -216,47 +231,6 @@ if (thermal->is_roi_enabled()) {
   int roi_pixels = thermal->get_roi_pixel_count();
 }
 ```
-
-## Performance Notes
-
-- **Memory Usage**: ~8KB RAM for buffers (stack-safe)
-- **I2C Speed**: Uses standard 400kHz I2C
-- **CPU Usage**: Minimal, most processing in hardware
-- **Refresh Rates**: Higher rates require more I2C bandwidth
-- **ROI Processing**: Adds <1ms per update
-
-## Agricultural Use Case
-
-Perfect for cannabis cultivation and other precision agriculture:
-
-```yaml
-# Target leaf canopy temperatures for VPD calculations
-mlx90640:
-  roi:
-    enabled: true
-    center_row: 15      # Target middle-lower canopy
-    center_col: 20      # Avoid hot lights/equipment
-    size: 4             # 9×9 area for good sampling
-```
-
-This allows precise leaf temperature measurement while excluding hot buds, lights, or equipment that would skew temperature readings for transpiration calculations.
-
-## Troubleshooting
-
-### No thermal readings
-- Check I2C wiring and address (0x33)
-- Verify 3.3V power supply (adequate current)
-- Enable I2C scanning: `scan: true`
-
-### Poor temperature accuracy
-- Allow warm-up time (2-3 minutes)
-- Check ambient temperature stability
-- Verify emissivity setting (default 0.95)
-
-### High memory usage
-- Component uses class member arrays (stack-safe)
-- Disable interpolation if not needed for display
-- Reduce update frequency for lower I2C usage
 
 ## License
 

@@ -30,14 +30,16 @@ sensor:
       id: co2_sensor
     temperature:
       name: "Temperature"
-      id: temperature_sensor
+      id: temperature_sensor  
     humidity:
       name: "Humidity"
       id: humidity_sensor
 
 scd4x_alerts:
   id: co2_alerts
-  scd4x_id: co2_component
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
   co2_high_threshold: 1500
   co2_low_threshold: 800
   temp_high_threshold: 30
@@ -46,17 +48,44 @@ scd4x_alerts:
     name: "CO2 High Alert"
     id: co2_high_alert
   co2_low_alert:
-    name: "CO2 Low Alert"
+    name: "CO2 Low Alert" 
     id: co2_low_alert
 ```
 
 ### Full Configuration Example
 
 ```yaml
+# First configure your sensors
+sensor:
+  - platform: scd4x
+    id: co2_component
+    co2:
+      name: "CO2"
+      id: co2_sensor
+    temperature:
+      name: "Temperature"
+      id: temperature_sensor
+    humidity:
+      name: "Humidity"
+      id: humidity_sensor
+
+# Optional: VPD stats component
+scd4x_stats:
+  id: co2_stats
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd:
+    name: "VPD"
+    id: vpd_sensor
+
+# Configure alerts component
 scd4x_alerts:
   id: co2_alerts
-  scd4x_id: co2_component
-  vpd_id: vpd_sensor  # Optional: from scd4x_stats
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd_sensor: vpd_sensor  # Optional: references VPD from scd4x_stats
   
   # Default thresholds
   co2_high_threshold: 1500
@@ -94,32 +123,34 @@ scd4x_alerts:
     name: "VPD Low Alert"
     id: vpd_low_alert
     
-  # User-adjustable threshold controls
+  # User-adjustable threshold controls (all optional)
   co2_high_threshold_number:
     name: "CO2 High Threshold"
-    id: co2_high_threshold_number
-    min_value: 500
-    max_value: 2000
-    step: 50
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
   co2_low_threshold_number:
     name: "CO2 Low Threshold"
-    id: co2_low_threshold_number
-    min_value: 400
-    max_value: 1000
-    step: 50
-    unit_of_measurement: "ppm"
-    icon: "mdi:molecule-co2"
+  temp_high_threshold_number:
+    name: "Temperature High Threshold"
+  temp_low_threshold_number:
+    name: "Temperature Low Threshold"
+  humidity_high_threshold_number:
+    name: "Humidity High Threshold"
+  humidity_low_threshold_number:
+    name: "Humidity Low Threshold"
+  vpd_high_threshold_number:
+    name: "VPD High Threshold"
+  vpd_low_threshold_number:
+    name: "VPD Low Threshold"
 ```
 
 ## Configuration Variables
 
-### Required
-- **scd4x_id** (**Required**): The ID of your SCD4x sensor component
+### Required Sensor References
+- **co2_sensor** (**Required**): The ID of your CO2 sensor
+- **temperature_sensor** (**Required**): The ID of your temperature sensor
+- **humidity_sensor** (**Required**): The ID of your humidity sensor
 
 ### Optional Sensor Reference
-- **vpd_id** (*Optional*): Reference to VPD sensor (typically from `scd4x_stats`)
+- **vpd_sensor** (*Optional*): Reference to VPD sensor (typically from `scd4x_stats`)
 
 ### Default Thresholds
 - **co2_high_threshold** (*Optional*, default: 1500): CO2 high threshold in ppm
@@ -161,26 +192,34 @@ Available controls:
 ## Important Notes
 
 ### Configuration Order
-⚠️ **The `scd4x_alerts` component must be declared AFTER the `scd4x` sensor AND any `scd4x_stats` component in your YAML configuration.**
+⚠️ **The `scd4x_alerts` component must be declared AFTER the sensor configuration AND any `scd4x_stats` component in your YAML configuration.**
 
 **Correct Order:**
 ```yaml
 sensor:
   - platform: scd4x
     id: co2_component
-    # ... sensor configuration
+    co2:
+      id: co2_sensor
+    temperature:
+      id: temperature_sensor
+    humidity:
+      id: humidity_sensor
 
 scd4x_stats:  # If using VPD alerts
   id: co2_stats
-  scd4x_id: co2_component
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
   vpd:
     id: vpd_sensor
-    # ... stats configuration
 
 scd4x_alerts:
   id: co2_alerts
-  scd4x_id: co2_component
-  vpd_id: vpd_sensor  # References stats component
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd_sensor: vpd_sensor  # References VPD from stats component
   # ... alerts configuration
 ```
 
@@ -197,9 +236,20 @@ Alerts will only trigger after the condition has been stable for the delay perio
 
 ### Basic Grow Room Monitoring
 ```yaml
+sensor:
+  - platform: scd4x
+    co2:
+      id: grow_co2
+    temperature:
+      id: grow_temp
+    humidity:
+      id: grow_humidity
+
 scd4x_alerts:
   id: grow_alerts
-  scd4x_id: grow_sensor
+  co2_sensor: grow_co2
+  temperature_sensor: grow_temp
+  humidity_sensor: grow_humidity
   co2_high_threshold: 1200  # Lower for plants
   co2_low_threshold: 600
   temp_high_threshold: 28
@@ -212,9 +262,20 @@ scd4x_alerts:
 
 ### HVAC System Integration
 ```yaml
+sensor:
+  - platform: scd4x
+    co2:
+      id: hvac_co2
+    temperature:
+      id: hvac_temp
+    humidity:
+      id: hvac_humidity
+
 scd4x_alerts:
   id: hvac_alerts
-  scd4x_id: hvac_sensor
+  co2_sensor: hvac_co2
+  temperature_sensor: hvac_temp
+  humidity_sensor: hvac_humidity
   co2_high_threshold: 1000
   temp_high_threshold: 25
   co2_high_alert:
@@ -225,17 +286,139 @@ scd4x_alerts:
 
 ### With User Controls
 ```yaml
+sensor:
+  - platform: scd4x
+    co2:
+      id: room_co2
+    temperature:
+      id: room_temp
+    humidity:
+      id: room_humidity
+
 scd4x_alerts:
   id: room_alerts
-  scd4x_id: room_sensor
+  co2_sensor: room_co2
+  temperature_sensor: room_temp
+  humidity_sensor: room_humidity
   co2_high_alert:
     name: "Room CO2 High"
   co2_high_threshold_number:
     name: "CO2 Alert Level"
-    min_value: 800
-    max_value: 2000
-    step: 100
 ```
+
+## Complete Working Example
+
+Here's a complete example configuration that includes all features:
+
+```yaml
+sensor:
+  - platform: scd4x
+    id: co2_component  
+    co2:
+      name: "CO2"
+      id: co2_sensor
+    temperature:
+      name: "Temperature"
+      id: temperature_sensor
+    humidity:
+      name: "Humidity" 
+      id: humidity_sensor
+
+# Optional: Add VPD calculation
+scd4x_stats:
+  id: co2_stats
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd:
+    name: "VPD"
+    id: vpd_sensor
+
+# Configure comprehensive alerts
+scd4x_alerts:
+  id: co2_alerts
+  co2_sensor: co2_sensor
+  temperature_sensor: temperature_sensor
+  humidity_sensor: humidity_sensor
+  vpd_sensor: vpd_sensor
+  
+  # Set initial thresholds
+  co2_high_threshold: 1500.0
+  co2_low_threshold: 800.0
+  temp_high_threshold: 30.0
+  temp_low_threshold: 18.0
+  humidity_high_threshold: 70.0
+  humidity_low_threshold: 40.0
+  vpd_high_threshold: 1.5
+  vpd_low_threshold: 0.4
+  
+  # Binary sensor alerts for automation
+  co2_high_alert:
+    name: "CO2 High Alert"
+    id: co2_high_alert
+  co2_low_alert:
+    name: "CO2 Low Alert"
+    id: co2_low_alert
+  temp_high_alert:
+    name: "Temperature High Alert"
+    id: temp_high_alert
+  temp_low_alert:
+    name: "Temperature Low Alert"
+    id: temp_low_alert
+  humidity_high_alert:
+    name: "Humidity High Alert"
+    id: humidity_high_alert
+  humidity_low_alert:
+    name: "Humidity Low Alert"
+    id: humidity_low_alert
+  vpd_high_alert:
+    name: "VPD High Alert"
+    id: vpd_high_alert
+  vpd_low_alert:
+    name: "VPD Low Alert"
+    id: vpd_low_alert
+    
+  # User-controllable thresholds
+  co2_high_threshold_number:
+    name: "CO2 High Threshold"
+  co2_low_threshold_number:
+    name: "CO2 Low Threshold"
+  temp_high_threshold_number:
+    name: "Temperature High Threshold"
+  temp_low_threshold_number:
+    name: "Temperature Low Threshold"
+  humidity_high_threshold_number:
+    name: "Humidity High Threshold"
+  humidity_low_threshold_number:
+    name: "Humidity Low Threshold"
+  vpd_high_threshold_number:
+    name: "VPD High Threshold"
+  vpd_low_threshold_number:
+    name: "VPD Low Threshold"
+```
+
+## Integration with Physical Displays
+
+The alert binary sensors can be connected to display components like `grow_env_monitor` for visual alerts on physical screens:
+
+```yaml
+# Configure sensors and alerts as above, then:
+grow_env_monitor:
+  id: grow_monitor
+  # ... other configuration
+  sensors:
+    co2: co2_sensor
+    temperature: temperature_sensor
+    humidity: humidity_sensor
+    # ... other sensors
+  # Connect alert binary sensors for configurable thresholds
+  temp_high_alert: temp_high_alert
+  temp_low_alert: temp_low_alert
+  humidity_high_alert: humidity_high_alert
+  humidity_low_alert: humidity_low_alert
+```
+
+This allows the physical display to show alerts based on the configurable thresholds instead of hardcoded values.
 
 ## Automation Integration
 
@@ -257,13 +440,16 @@ automation:
 
 ## Troubleshooting
 
-### "Component scd4x_alerts requires component scd4x"
-Move the `scd4x_alerts` configuration after your sensor configuration.
+### "Component scd4x_alerts requires component sensor" 
+Ensure that the `scd4x_alerts` configuration is placed after your sensor configuration in the YAML file.
+
+### "Failed to find sensor with id: co2_sensor"
+Make sure the sensor IDs in `co2_sensor`, `temperature_sensor`, and `humidity_sensor` match the actual IDs from your sensor configuration.
 
 ### VPD alerts not working
 Ensure you have:
 1. A VPD sensor configured (usually from `scd4x_stats`)
-2. The `vpd_id` parameter correctly references your VPD sensor
+2. The `vpd_sensor` parameter correctly references your VPD sensor ID
 3. The VPD sensor is producing valid data
 
 ### Alerts not triggering

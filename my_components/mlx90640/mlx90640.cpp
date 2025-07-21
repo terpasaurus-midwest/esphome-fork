@@ -53,8 +53,7 @@ void MLX90640Component::dump_config() {
                   roi_config_.size);
   }
   if (web_server_enabled_) {
-    ESP_LOGCONFIG(TAG, "  Web Server: %s (%dx%d, quality=%d)", web_server_path_.c_str(), web_server_width_,
-                  web_server_height_, web_server_quality_);
+    ESP_LOGCONFIG(TAG, "  Web Server: %s (160x120, quality=%d)", web_server_path_.c_str(), web_server_quality_);
   }
 }
 
@@ -774,7 +773,7 @@ void MLX90640Component::handle_thermal_image_request_(AsyncWebServerRequest *req
   }
 
   ESP_LOGD(TAG, "Generating JPEG using JPEGENC library");
-  generate_jpg_jpegenc_(request, web_server_width_, web_server_height_, web_server_quality_);
+  generate_jpg_jpegenc_(request, 160, 120, web_server_quality_);
 }
 
 void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality) {
@@ -876,6 +875,136 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
   }
 
   free(jpg_buffer);
+}
+
+// MLX90640Number implementation
+void MLX90640Number::setup() {
+  float value;
+  if (!restore_value_) {
+    value = initial_value_;
+  } else {
+    this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
+    if (!this->pref_.load(&value)) {
+      if (!std::isnan(this->initial_value_)) {
+        value = this->initial_value_;
+      } else {
+        value = this->traits.get_min_value();
+      }
+    }
+  }
+  if (!std::isnan(value)) {
+    this->publish_state(value);
+  }
+}
+
+// MLX90640Select implementation
+void MLX90640Select::setup() {
+  std::string value;
+  if (!this->restore_value_) {
+    value = this->initial_option_;
+  } else {
+    size_t index;
+    this->pref_ = global_preferences->make_preference<size_t>(this->get_object_id_hash());
+    if (!this->pref_.load(&index)) {
+      value = this->initial_option_;
+    } else if (!this->has_index(index)) {
+      value = this->initial_option_;
+    } else {
+      value = this->at(index).value();
+    }
+  }
+
+  if (!value.empty()) {
+    this->control(value);
+  }
+}
+
+// MLX90640Switch implementation
+void MLX90640Switch::setup() {
+  optional<bool> initial_state = this->get_initial_state_with_restore_mode();
+
+  if (initial_state.has_value()) {
+    ESP_LOGD("MLX90640Switch", "Restored ROI enabled state: %s", initial_state.value() ? "ON" : "OFF");
+    if (parent_ != nullptr) {
+      parent_->update_roi_enabled(initial_state.value());
+    }
+    this->publish_state(initial_state.value());
+  }
+}
+
+// MLX90640Number implementation
+void MLX90640Number::control(float value) {
+  if (parent_ == nullptr) {
+    ESP_LOGE("MLX90640Number", "Parent component not set");
+    return;
+  }
+
+  switch (control_type_) {
+    case UPDATE_INTERVAL:
+      parent_->set_update_interval((uint32_t) value);
+      ESP_LOGD("MLX90640Number", "Update interval changed to %d ms", (uint32_t) value);
+      break;
+
+    case ROI_CENTER_ROW:
+      parent_->update_roi_center_row((int) value);
+      ESP_LOGD("MLX90640Number", "ROI center row changed to %d", (int) value);
+      break;
+
+    case ROI_CENTER_COL:
+      parent_->update_roi_center_col((int) value);
+      ESP_LOGD("MLX90640Number", "ROI center column changed to %d", (int) value);
+      break;
+
+    case ROI_SIZE:
+      parent_->update_roi_size((int) value);
+      ESP_LOGD("MLX90640Number", "ROI size changed to %d", (int) value);
+      break;
+
+    default:
+      ESP_LOGE("MLX90640Number", "Unknown control type");
+      return;
+  }
+
+  // Update the UI state
+  publish_state(value);
+
+  if (this->restore_value_)
+    this->pref_.save(&value);
+}
+
+// MLX90640Select implementation
+void MLX90640Select::control(const std::string &value) {
+  if (parent_ == nullptr) {
+    ESP_LOGE("MLX90640Select", "Parent component not set");
+    return;
+  }
+
+  parent_->set_thermal_palette(value);
+  ESP_LOGD("MLX90640Select", "Thermal palette changed to %s", value.c_str());
+
+  // Update the UI state
+  publish_state(value);
+
+  if (this->restore_value_) {
+    auto index = this->index_of(value);
+    if (index.has_value()) {
+      this->pref_.save(&index.value());
+    }
+  }
+}
+
+// MLX90640Switch implementation
+void MLX90640Switch::write_state(bool state) {
+  if (parent_ == nullptr) {
+    ESP_LOGE("MLX90640Switch", "Parent component not set");
+    return;
+  }
+
+  parent_->update_roi_enabled(state);
+  ESP_LOGD("MLX90640Switch", "ROI enabled changed to %s", state ? "true" : "false");
+
+  // Update the UI state
+  publish_state(state);
 }
 
 }  // namespace mlx90640
