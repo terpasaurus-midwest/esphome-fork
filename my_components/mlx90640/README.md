@@ -14,7 +14,7 @@ This component provides comprehensive MLX90640 thermal imaging capabilities with
 - **Multiple resolution modes** (16-bit to 19-bit)
 - **Chess/Interleaved readout patterns** for optimal performance
 - **Bad pixel correction** and frame synchronization
-- **Synchronized data acquisition** - no blank or incomplete images due to timing issues 
+- **Synchronized data acquisition** - no blank or incomplete images due to timing issues
 
 ### 🎯 **Advanced ROI (Region of Interest) Support**
 - **Configurable square area** with adjustable position and size within the thermal image
@@ -51,16 +51,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/terpasaurus-midwest/esphome-fork
-      ref: m5stack
-    components: [mlx90640]
-```
-
-### Option 2: Local Component
-```yaml
-external_components:
-  - source:
-      type: local
-      path: /path/to/components
+      ref: m5cores3  # must use this branch even if you don't have an S3
     components: [mlx90640]
 ```
 
@@ -73,6 +64,14 @@ i2c:
   scl: 22  # change to match your ESP hardware
   scan: true
 
+# These must be specified, if any are not in your config already
+# You can leave them blank like this if you don't use any of them.
+# If they are not included, you will get compilation errors due to
+# missing Switch, Number, or Select headers.
+switch:
+number:
+select:
+
 # MLX90640 component
 mlx90640:
   id: thermal_camera
@@ -81,12 +80,14 @@ mlx90640:
   pattern: "chess"            # Optional, defaults to chess
   single_frame: false         # Optional, defaults to false
   update_interval: 2000       # Static value in milliseconds
-  
+
   # Web server for thermal image viewing (optional)
+  # This config must be under the `mlx90640` key and not its own top-level key.
+  # You are configuring the MLX component's web server, not your own.
   web_server:
     enable: true
     path: "/thermal.jpg"
-    quality: 80               # JPEG quality 10-100
+    quality: 80               # JPEGENC encoding quality 10-100
 ```
 
 ## Full Configuration Reference
@@ -107,13 +108,20 @@ mlx90640:
   pattern: "chess"            # Optional, defaults to chess
   single_frame: false         # Optional, defaults to false
   update_interval: 2000       # Static value in milliseconds
-  
+
+  # Warning:
+  # The factory calibration is for 16 Hz with an 18-bit, dual-frame chess pattern image.
+  # Using any other values will result in less accurate temperature measurements unless
+  # you are handling whatever compensatory changes are required. Update interval can be
+  # lowered to around 500 ms without causing major problems on an ESP32-S3, if needed.
+  # I don't really recommend updating that frequently unless you are photographing motion.
+
   # Web server for thermal image viewing (optional)
   web_server:
     enable: true
     path: "/thermal.jpg"
-    quality: 80               # JPEG quality 10-100
-  
+    quality: 80               # JPEGENC encoding quality 10-100
+
   # Auto-generated temperature sensors (optional)
   temperature_sensors:
     min:
@@ -128,38 +136,38 @@ mlx90640:
       name: "ROI Max Temperature"
     roi_avg:
       name: "ROI Average Temperature"
-  
+
   # Auto-generated user controls (optional)
   update_interval_control:
     name: "Thermal Update Interval"
     min_value: 100              # Optional, defaults to 100ms
     max_value: 30000            # Optional, defaults to 30000ms
     restore_value: true         # Optional, enables persistence
-    
+
   thermal_palette_control:
     name: "Thermal Color Palette"
     restore_value: true         # Optional, enables/disables persistence
-    
+
   # ROI configuration (optional)
   roi:
     enabled: false
     center_row: 12
     center_col: 16
     size: 2
-    
+
   # ROI runtime controls (optional)
   roi_enabled_control:
     name: "ROI Enabled"
     restore_mode: RESTORE_DEFAULT_OFF  # Optional, enables persistence
-    
+
   roi_center_row_control:
     name: "ROI Center Row"
     restore_value: true         # Optional, enables persistence
-    
+
   roi_center_col_control:
     name: "ROI Center Column"
     restore_value: true         # Optional, enables persistence
-    
+
   roi_size_control:
     name: "ROI Size"
     restore_value: true         # Optional, enables persistence
@@ -168,6 +176,12 @@ mlx90640:
 ## Configuration Reference
 
 ### Hardware Settings (Static)
+In general, you should not change these settings, except `update_interval`. If you
+plan to change any, you must read the Melexis datasheet first to understand the
+implications of changing these. Otherwise, you will impact temperature accuracy.
+
+They are made configurable for folks who understand the repercussions and need to
+change things for specific research purposes.
 - **`refresh_rate`**: `"0.5Hz"` to `"64Hz"` - thermal sensor refresh rate
 - **`resolution`**: `"16-bit"` to `"19-bit"` - thermal sensor precision
 - **`pattern`**: `"chess"` (recommended) or `"interleaved"` - readout pattern
