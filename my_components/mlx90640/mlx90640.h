@@ -152,6 +152,7 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   // Web server JPEG generation
   void setup_web_server_();
   void generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality);
+  void add_roi_overlay_to_image_(std::vector<uint16_t> &image_data, int img_width, int img_height);
 #endif
 
   // Hardware configuration

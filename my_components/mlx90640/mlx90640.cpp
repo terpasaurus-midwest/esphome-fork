@@ -797,6 +797,9 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
     }
   }
 
+  // Add ROI overlay if enabled
+  add_roi_overlay_to_image_(image_data, img_width, img_height);
+
   // Create smaller JPEG buffer to save memory
   uint8_t *jpg_buffer = (uint8_t *) malloc(16384);  // 16KB buffer
   if (!jpg_buffer) {
@@ -852,6 +855,105 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
   }
 
   free(jpg_buffer);
+}
+
+void MLX90640Component::add_roi_overlay_to_image_(std::vector<uint16_t> &image_data, int img_width, int img_height) {
+  if (!roi_config_.enabled || !initialized_) {
+    return;
+  }
+
+  // Get ROI overlay bounds for the full image dimensions
+  int roi_display_x1, roi_display_y1, roi_display_x2, roi_display_y2;
+  if (!get_roi_overlay_bounds(0, 0, img_width, img_height, roi_display_x1, roi_display_y1, roi_display_x2,
+                              roi_display_y2)) {
+    return;
+  }
+
+  int roi_width = roi_display_x2 - roi_display_x1;
+  int roi_height = roi_display_y2 - roi_display_y1;
+
+  // Use bright cyan color (RGB565) for good contrast against thermal colors
+  uint16_t roi_color = 0x07FF;  // Bright cyan (RGB565)
+
+  // Draw ROI rectangle border
+  // Top and bottom horizontal lines
+  for (int x = roi_display_x1; x < roi_display_x2 && x < img_width; x++) {
+    if (x >= 0) {
+      // Top line
+      if (roi_display_y1 >= 0 && roi_display_y1 < img_height) {
+        image_data[roi_display_y1 * img_width + x] = roi_color;
+      }
+      // Bottom line
+      if (roi_display_y2 - 1 >= 0 && roi_display_y2 - 1 < img_height) {
+        image_data[(roi_display_y2 - 1) * img_width + x] = roi_color;
+      }
+    }
+  }
+
+  // Left and right vertical lines
+  for (int y = roi_display_y1; y < roi_display_y2 && y < img_height; y++) {
+    if (y >= 0) {
+      // Left line
+      if (roi_display_x1 >= 0 && roi_display_x1 < img_width) {
+        image_data[y * img_width + roi_display_x1] = roi_color;
+      }
+      // Right line
+      if (roi_display_x2 - 1 >= 0 && roi_display_x2 - 1 < img_width) {
+        image_data[y * img_width + (roi_display_x2 - 1)] = roi_color;
+      }
+    }
+  }
+
+  // Draw a second border 1 pixel inset for better visibility (if roi is large enough)
+  if (roi_width > 4 && roi_height > 4) {
+    // Top and bottom horizontal lines (inset)
+    for (int x = roi_display_x1 + 1; x < roi_display_x2 - 1 && x < img_width; x++) {
+      if (x >= 0) {
+        // Top line (inset)
+        if (roi_display_y1 + 1 >= 0 && roi_display_y1 + 1 < img_height) {
+          image_data[(roi_display_y1 + 1) * img_width + x] = roi_color;
+        }
+        // Bottom line (inset)
+        if (roi_display_y2 - 2 >= 0 && roi_display_y2 - 2 < img_height) {
+          image_data[(roi_display_y2 - 2) * img_width + x] = roi_color;
+        }
+      }
+    }
+
+    // Left and right vertical lines (inset)
+    for (int y = roi_display_y1 + 1; y < roi_display_y2 - 1 && y < img_height; y++) {
+      if (y >= 0) {
+        // Left line (inset)
+        if (roi_display_x1 + 1 >= 0 && roi_display_x1 + 1 < img_width) {
+          image_data[y * img_width + (roi_display_x1 + 1)] = roi_color;
+        }
+        // Right line (inset)
+        if (roi_display_x2 - 2 >= 0 && roi_display_x2 - 2 < img_width) {
+          image_data[y * img_width + (roi_display_x2 - 2)] = roi_color;
+        }
+      }
+    }
+  }
+
+  // Draw crosshairs at center point
+  int center_display_x, center_display_y;
+  if (get_roi_crosshair_coords(0, 0, img_width, img_height, center_display_x, center_display_y)) {
+    int crosshair_size = 6;  // Length of crosshair lines in pixels
+
+    // Horizontal crosshair line
+    for (int x = center_display_x - crosshair_size; x <= center_display_x + crosshair_size; x++) {
+      if (x >= 0 && x < img_width && center_display_y >= 0 && center_display_y < img_height) {
+        image_data[center_display_y * img_width + x] = roi_color;
+      }
+    }
+
+    // Vertical crosshair line
+    for (int y = center_display_y - crosshair_size; y <= center_display_y + crosshair_size; y++) {
+      if (y >= 0 && y < img_height && center_display_x >= 0 && center_display_x < img_width) {
+        image_data[y * img_width + center_display_x] = roi_color;
+      }
+    }
+  }
 }
 #endif  // USE_NETWORK
 
