@@ -10,13 +10,6 @@ static const char *const TAG = "mlx90640";
 void MLX90640Component::setup() {
   ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
 
-  // Initialize SPIFFS for JPEG file storage
-  if (!SPIFFS.begin(true)) {
-    ESP_LOGE(TAG, "SPIFFS Mount Failed");
-  } else {
-    ESP_LOGD(TAG, "SPIFFS mounted successfully");
-  }
-
   // Initialize I2C
   Wire.begin();
 
@@ -25,10 +18,12 @@ void MLX90640Component::setup() {
   // Initialize thermal color palette
   set_active_palette_();
 
+#ifdef USE_NETWORK
   // Setup web server if enabled
   if (web_server_enabled_) {
     setup_web_server_();
   }
+#endif
 
   ESP_LOGCONFIG(TAG, "MLX90640 setup complete");
 }
@@ -52,9 +47,11 @@ void MLX90640Component::dump_config() {
     ESP_LOGCONFIG(TAG, "  ROI Enabled: Center(%d,%d) Size=%d", roi_config_.center_row, roi_config_.center_col,
                   roi_config_.size);
   }
+#ifdef USE_NETWORK
   if (web_server_enabled_) {
     ESP_LOGCONFIG(TAG, "  Web Server: %s (160x120, quality=%d)", web_server_path_.c_str(), web_server_quality_);
   }
+#endif
 }
 
 void MLX90640Component::setup_thermal_() {
@@ -736,17 +733,16 @@ bool MLX90640Component::get_roi_crosshair_coords(int image_x, int image_y, int i
   return true;
 }
 
+#ifdef USE_NETWORK
 // Web server JPEG generation implementation
 void MLX90640Component::setup_web_server_() {
   ESP_LOGCONFIG(TAG, "Setting up web server endpoint at %s", web_server_path_.c_str());
 
-  // Check if global web server base is available
-  if (!web_server_base::global_web_server_base) {
+  // Check if web server base instance was provided
+  if (!base_) {
     ESP_LOGW(TAG, "WebServerBase not available, thermal image endpoint not registered");
     return;
   }
-
-  base_ = web_server_base::global_web_server_base;
 
   // Ensure the web server base is initialized
   base_->init();
@@ -846,29 +842,13 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
   ESP_LOGD(TAG, "JPEG created in memory: %d bytes", jpeg_size);
 
   if (jpeg_size > 0) {
-    // Write JPEG to SPIFFS
-    const char *filename = "/thermal.jpg";
-    auto file = SPIFFS.open(filename, "w");
-    if (file) {
-      size_t written = file.write(jpg_buffer, jpeg_size);
-      file.close();
-      ESP_LOGD(TAG, "JPEG written to SPIFFS: %d bytes", (int) written);
-
-      if (written == jpeg_size) {
-        // Serve the file from SPIFFS
-        AsyncWebServerResponse *response = request->beginResponse(SPIFFS, filename, "image/jpeg");
-        response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        response->addHeader("Pragma", "no-cache");
-        response->addHeader("Expires", "0");
-        request->send(response);
-      } else {
-        ESP_LOGE(TAG, "Failed to write complete JPEG to SPIFFS");
-        request->send(500, "text/plain", "File write failed");
-      }
-    } else {
-      ESP_LOGE(TAG, "Failed to open SPIFFS file for writing");
-      request->send(500, "text/plain", "SPIFFS write failed");
-    }
+    // Serve JPEG directly from memory
+    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/jpeg", jpg_buffer, jpeg_size);
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+    request->send(response);
+    ESP_LOGD(TAG, "JPEG served directly from memory: %d bytes", jpeg_size);
   } else {
     ESP_LOGE(TAG, "JPEG generation failed");
     request->send(500, "text/plain", "JPEG generation failed");
@@ -876,6 +856,7 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
 
   free(jpg_buffer);
 }
+#endif  // USE_NETWORK
 
 // MLX90640Number implementation
 void MLX90640Number::setup() {

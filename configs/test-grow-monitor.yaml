@@ -119,6 +119,9 @@ web_server:
       name: "Diagnostics"
       sorting_weight: 40
 
+web_server_base:
+  id: my_web_server_base
+
 i2c:
   sda: 2
   scl: 1
@@ -159,13 +162,14 @@ mlx90640:
   web_server:
     enable: true
     path: "/thermal.jpg"
-    quality: 80
+    quality: 90
+    web_server_base_id: my_web_server_base
   roi:
     enabled: false  # Start disabled, user can enable via web interface
     center_row: 6  # Center of 24 rows (1-24 user range)
     center_col: 6  # Center of 32 cols (1-32 user range)
     size: 1  # 5x5 ROI (25 pixels)
-  
+
   # Auto-generated temperature sensors
   temperature_sensors:
     min:
@@ -204,7 +208,7 @@ mlx90640:
       web_server:
         sorting_group_id: thermal_camera_group
         sorting_weight: 60
-  
+
   # Auto-generated user controls
   update_interval_control:
     name: "Thermal Update Interval"
@@ -215,21 +219,21 @@ mlx90640:
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 80
-      
+
   thermal_palette_control:
     name: "Thermal Color Palette"
     id: thermal_palette_select
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 40
-      
+
   roi_enabled_control:
     name: "ROI Enabled"
     id: roi_enabled_switch
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 120
-      
+
   roi_center_row_control:
     name: "ROI Center Row"
     id: roi_center_row_number
@@ -239,7 +243,7 @@ mlx90640:
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 90
-      
+
   roi_center_col_control:
     name: "ROI Center Column"
     id: roi_center_col_number
@@ -249,7 +253,7 @@ mlx90640:
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 100
-      
+
   roi_size_control:
     name: "ROI Size"
     id: roi_size_number
@@ -347,7 +351,6 @@ sensor:
       web_server:
         sorting_group_id: diagnostics
         sorting_weight: 50
-
 
 scd4x_stats:
   id: co2_stats

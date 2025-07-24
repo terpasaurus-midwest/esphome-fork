@@ -6,16 +6,17 @@
 #include "esphome/components/number/number.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/switch/switch.h"
+#ifdef USE_NETWORK
 #include "esphome/components/web_server_base/web_server_base.h"
+#endif
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 #include <Wire.h>
 #include <algorithm>
-#include <FS.h>
-#include <SPIFFS.h>
-
+#ifdef USE_NETWORK
 // Always include JPEGENC for JPEG generation
 #include <JPEGENC.h>
+#endif
 
 namespace esphome {
 namespace mlx90640 {
@@ -29,7 +30,11 @@ struct ROIConfig {
 
 class MLX90640Component : public Component {
  public:
-  MLX90640Component() : base_(nullptr) {}
+  MLX90640Component() {
+#ifdef USE_NETWORK
+    base_ = nullptr;
+#endif
+  }
 
   void setup() override;
   void loop() override;
@@ -60,10 +65,13 @@ class MLX90640Component : public Component {
       roi_config_.size = size;
   }
 
+#ifdef USE_NETWORK
   // Web server configuration
   void set_web_server_enabled(bool enabled) { web_server_enabled_ = enabled; }
   void set_web_server_path(const std::string &path) { web_server_path_ = path; }
   void set_web_server_quality(int quality) { web_server_quality_ = quality; }
+  void set_web_server_base(web_server_base::WebServerBase *base) { base_ = base; }
+#endif
 
   // Sensor setters
   void set_temperature_min_sensor(sensor::Sensor *sensor) { temp_min_sensor_ = sensor; }
@@ -111,8 +119,10 @@ class MLX90640Component : public Component {
                               int &roi_y2) const;
   bool get_roi_crosshair_coords(int image_x, int image_y, int image_w, int image_h, int &center_x, int &center_y) const;
 
+#ifdef USE_NETWORK
   // Web server thermal image handler
   void handle_thermal_image_request_(AsyncWebServerRequest *request);
+#endif
 
  protected:
   void setup_thermal_();
@@ -133,13 +143,15 @@ class MLX90640Component : public Component {
                           uint8_t dest_cols);
   float get_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
   void set_point_(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y, float f);
-
-  // Web server JPEG generation
-  void setup_web_server_();
-  void generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality);
   void get_adjacents_2d_(float *src, float *dest, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
   float cubic_interpolate_(float p[], float x);
   float bicubic_interpolate_(float p[], float x, float y);
+
+#ifdef USE_NETWORK
+  // Web server JPEG generation
+  void setup_web_server_();
+  void generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality);
+#endif
 
   // Hardware configuration
   static const uint8_t MLX90640_ADDRESS = 0x33;
@@ -157,11 +169,13 @@ class MLX90640Component : public Component {
   std::string thermal_palette_{"rainbow"};
   const uint16_t *current_palette_{nullptr};
 
+#ifdef USE_NETWORK
   // Web server configuration
   bool web_server_enabled_{false};
   std::string web_server_path_{"/thermal.jpg"};
   int web_server_quality_{85};
   web_server_base::WebServerBase *base_;
+#endif
 
   // Hardware state
   bool initialized_{false};
