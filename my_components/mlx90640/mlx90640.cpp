@@ -10,9 +10,6 @@ static const char *const TAG = "mlx90640";
 void MLX90640Component::setup() {
   ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
 
-  // Initialize I2C
-  Wire.begin();
-
   setup_thermal_();
 
   // Initialize thermal color palette
@@ -59,7 +56,7 @@ void MLX90640Component::setup_thermal_() {
 
   // Dump EEPROM parameters
   uint16_t eeMLX90640[832];
-  int status = MLX90640_DumpEE(MLX90640_ADDRESS, eeMLX90640);
+  int status = MLX90640_DumpEE(this->address_, eeMLX90640);
   if (status != 0) {
     ESP_LOGE(TAG, "Failed to dump MLX90640 EEPROM: %d", status);
     return;
@@ -74,7 +71,7 @@ void MLX90640Component::setup_thermal_() {
 
   // Configure refresh rate from user setting
   uint16_t refresh_rate_code = parse_refresh_rate_(refresh_rate_);
-  status = MLX90640_SetRefreshRate(MLX90640_ADDRESS, refresh_rate_code);
+  status = MLX90640_SetRefreshRate(this->address_, refresh_rate_code);
   if (status != 0) {
     ESP_LOGW(TAG, "Failed to set MLX90640 refresh rate: %d", status);
   } else {
@@ -109,7 +106,7 @@ void MLX90640Component::update_thermal_data_() {
   ESP_LOGD(TAG, "Reading MLX90640 thermal data...");
 
   // Synchronize frame to ensure fresh data is available
-  int sync_status = MLX90640_SynchFrame(MLX90640_ADDRESS);
+  int sync_status = MLX90640_SynchFrame(this->address_);
   if (sync_status != 0) {
     ESP_LOGW(TAG, "MLX90640 frame synchronization failed: %d", sync_status);
     return;
@@ -123,7 +120,7 @@ void MLX90640Component::update_thermal_data_() {
 
   for (byte attempt = 0; attempt < max_frames; attempt++) {
     uint32_t start_time = millis();
-    int status = MLX90640_GetFrameData(MLX90640_ADDRESS, mlx90640Frame_);
+    int status = MLX90640_GetFrameData(this->address_, mlx90640Frame_);
     uint32_t read_time = millis() - start_time;
 
     if (status < 0) {
@@ -350,17 +347,17 @@ int MLX90640Component::setup_thermal_resolution_(int bits) {
       ESP_LOGW(TAG, "Invalid resolution bits: %d, using 18-bit", bits);
       resolution = 2;
   }
-  return MLX90640_SetResolution(MLX90640_ADDRESS, resolution);
+  return MLX90640_SetResolution(this->address_, resolution);
 }
 
 int MLX90640Component::setup_thermal_pattern_(const std::string &pattern) {
   if (pattern == "chess") {
-    return MLX90640_SetChessMode(MLX90640_ADDRESS);
+    return MLX90640_SetChessMode(this->address_);
   } else if (pattern == "interleaved") {
-    return MLX90640_SetInterleavedMode(MLX90640_ADDRESS);
+    return MLX90640_SetInterleavedMode(this->address_);
   } else {
     ESP_LOGW(TAG, "Unknown pattern mode: %s, using chess", pattern.c_str());
-    return MLX90640_SetChessMode(MLX90640_ADDRESS);
+    return MLX90640_SetChessMode(this->address_);
   }
 }
 

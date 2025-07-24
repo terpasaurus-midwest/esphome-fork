@@ -1,5 +1,5 @@
 import esphome.codegen as cg
-from esphome.components import number, select, sensor, switch
+from esphome.components import i2c, number, select, sensor, switch
 from esphome.components.sensor import StateClasses
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
@@ -12,11 +12,11 @@ try:
 except ImportError:
     WEB_SERVER_BASE_AVAILABLE = False
 
-DEPENDENCIES = ["esp32", "sensor", "number", "select", "switch"]
+DEPENDENCIES = ["esp32", "sensor", "number", "select", "switch", "i2c"]
 
 # Define the MLX90640 namespace and component classes
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
-MLX90640Component = mlx90640_ns.class_("MLX90640Component", cg.Component)
+MLX90640Component = mlx90640_ns.class_("MLX90640Component", cg.Component, i2c.I2CDevice)
 
 # Define MLX90640-specific component classes
 MLX90640Number = mlx90640_ns.class_("MLX90640Number", number.Number, cg.Component)
@@ -212,12 +212,13 @@ CONFIG_SCHEMA = cv.Schema(
             }
         ),
     }
-)
+).extend(i2c.i2c_device_schema(0x33))
 
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    await i2c.register_i2c_device(var, config)
 
     # Add JPEGENC library for JPEG generation
     cg.add_platformio_option("lib_deps", ["https://github.com/bitbank2/JPEGENC.git"])

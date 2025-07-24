@@ -6,6 +6,7 @@
 #include "esphome/components/number/number.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/switch/switch.h"
+#include "esphome/components/i2c/i2c.h"
 #ifdef USE_NETWORK
 #include "esphome/components/web_server_base/web_server_base.h"
 #endif
@@ -28,7 +29,7 @@ struct ROIConfig {
   int size = 2;         // ROI scaling factor
 };
 
-class MLX90640Component : public Component {
+class MLX90640Component : public Component, public i2c::I2CDevice {
  public:
   MLX90640Component() {
 #ifdef USE_NETWORK
@@ -154,7 +155,6 @@ class MLX90640Component : public Component {
 #endif
 
   // Hardware configuration
-  static const uint8_t MLX90640_ADDRESS = 0x33;
   static const int TA_SHIFT = 8;
 
   // Configuration
