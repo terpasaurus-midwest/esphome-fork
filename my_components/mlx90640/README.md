@@ -1,255 +1,145 @@
-# MLX90640 Thermal Imaging Component
+# MLX90640 Thermal Camera Component
 
-A standalone ESPHome component exposing and enhancing the Melexis MLX90640 thermal temperature imaging device's capabilities in ESPHome.
+ESPHome component for the Melexis MLX90640 thermal imaging sensor. Provides temperature measurement, thermal imaging, and region-of-interest (ROI) analysis.
 
-The concept is to expose all the useful functionality from the Melexis driver into configurable ESPHome entities. And to provide a framework to build additional features enhancing the implementation.
+## What it does
 
-## Features
+- Reads 32×24 thermal array from MLX90640 sensor
+- Publishes temperature statistics as ESPHome sensors
+- Provides JPEG thermal images via HTTP endpoint
+- Supports configurable ROI for targeted temperature monitoring
+- Generates runtime controls for thermal settings adjustment
 
-This component provides comprehensive MLX90640 thermal imaging capabilities with several unique features not found in existing ESPHome implementations:
+## Quick Start
 
-### 🌡️ **Complete Thermal Imaging**
-- **32×24 pixel thermal array** with temperature range -40°C to 85°C
-- **Configurable refresh rates** from 0.5Hz to 64Hz
-- **Multiple resolution modes** (16-bit to 19-bit)
-- **Chess/Interleaved readout patterns** for optimal performance
-- **Bad pixel correction** and frame synchronization
-- **Synchronized data acquisition** - no blank or incomplete images due to timing issues
+See [example.yaml](example.yaml) for a complete working configuration. Copy the relevant sections to your ESPHome config:
 
-### 🎯 **Advanced ROI (Region of Interest) Support**
-- **Configurable square area** with adjustable position and size within the thermal image
-- **Independent temperature statistics** with dedicated sensor entities for ROI min/max/avg temperatures
-- **Real-time ROI adjustment** via ESPHome number/switch controls with persistence across reboots
-- **Filter out outliers** - exclude excessively hot or cold objects that would invalidate temperature measurements
-- **Perfect for agriculture** - target leaf temperatures while excluding hot lights, buds, and equipment
+- Required empty platform sections (`switch:`, `number:`, `select:`, `sensor:`)
+- `web_server_base:` with an ID
+- `mlx90640:` component with temperature sensors, controls, and web server configuration
 
-### 🎨 **Configurable Thermographic Color Palettes**
-- **Multiple color palette options** (rainbow, golden, grayscale, ironblack, cam, ironbow, arctic, lava, whitehot, blackhot)
-- **Runtime palette switching** via drop-down select entity in ESPHome web UI
-- **Hot-swappable without restart** - changes apply immediately
-- **Persistent across reboots** when configured with restore_value: true
-- **Web server JPEG endpoint** for thermal image viewing with selectable quality
+The example includes all necessary sensor stubs and control entities that will appear in Home Assistant.
 
-### 🔗 **ESPHome Integration**
-- **Auto-generated sensors and controls** - no manual template configuration needed
-- **Runtime configuration** via web interface with persistent settings
-- **Clean API** for use in custom components (e.g., drawing thermal images on displays)
-- **Home Assistant integration** ready out of the box
+Access thermal image at `http://device-ip/thermal.jpg`
 
 ## Hardware Requirements
 
-- **ESP32 microcontroller**
-- **MLX90640 thermal camera** connected via I2C
-- **I2C connection**: SDA and SCL pins (configurable)
-- **3.3V power supply** for MLX90640
+- ESP32 microcontroller
+- MLX90640 thermal sensor on I2C bus
+- 3.3V power supply for sensor
 
-## Installation
+## Configuration
 
-### Option 1: GitHub Reference
-```yaml
-external_components:
-  - source:
-      type: git
-      url: https://github.com/terpasaurus-midwest/esphome-fork
-      ref: m5cores3  # must use this branch even if you don't have an S3
-    components: [mlx90640]
-```
-
-## Basic Configuration
-
-```yaml
-# Required I2C bus (M5Stack Core S3 pins used for this example)
-i2c:
-  sda: 21  # change to match your ESP hardware
-  scl: 22  # change to match your ESP hardware
-  scan: true
-
-# These must be specified, if any are not in your config already
-# You can leave them blank like this if you don't use any of them.
-# If they are not included, you will get compilation errors due to
-# missing Switch, Number, or Select headers.
-switch:
-number:
-select:
-
-# MLX90640 component
-mlx90640:
-  id: thermal_camera
-  refresh_rate: "16Hz"        # Optional, defaults to 16Hz
-  resolution: "18-bit"        # Optional, defaults to 18-bit
-  pattern: "chess"            # Optional, defaults to chess
-  single_frame: false         # Optional, defaults to false
-  update_interval: 2000       # Static value in milliseconds
-
-  # Web server for thermal image viewing (optional)
-  # This config must be under the `mlx90640` key and not its own top-level key.
-  # You are configuring the MLX component's web server, not your own.
-  web_server:
-    enable: true
-    path: "/thermal.jpg"
-    quality: 80               # JPEGENC encoding quality 10-100
-```
-
-## Full Configuration Reference
-
-Everything here is optional/implied, but all options are provided here in case you need to change anything.
-
-Just because you can change something, does not mean it will work. For example:
-* 32Hz refresh rate and above is known to make the hardware stop working.
-  * Slower refresh rates with faster update intervals provide better temperature accuracy than faster refresh rates. Review the Melexis datasheet before using this product for serious business.
-* Melexis did not calibrate the sensor for a resolution other than 18-bit and a pattern other than chess.
-* Using single-frame mode can be helpful if you need to prioritize fast motion performance in your image frame, but it will decrease your temperature measurement accuracy. It is not advised for horticulture and similar use.
+### Hardware Settings
 
 ```yaml
 mlx90640:
   id: thermal_camera
-  refresh_rate: "16Hz"        # Optional, defaults to 16Hz
-  resolution: "18-bit"        # Optional, defaults to 18-bit
-  pattern: "chess"            # Optional, defaults to chess
-  single_frame: false         # Optional, defaults to false
-  update_interval: 2000       # Static value in milliseconds
+  refresh_rate: "16Hz"        # 0.5Hz to 64Hz (default: 16Hz)
+  resolution: "18-bit"        # 16-bit to 19-bit (default: 18-bit)
+  pattern: "chess"            # chess or interleaved (default: chess)
+  update_interval: 20000      # Update frequency in milliseconds
+```
 
-  # Warning:
-  # The factory calibration is for 16 Hz with an 18-bit, dual-frame chess pattern image.
-  # Using any other values will result in less accurate temperature measurements unless
-  # you are handling whatever compensatory changes are required. Update interval can be
-  # lowered to around 500 ms without causing major problems on an ESP32-S3, if needed.
-  # I don't really recommend updating that frequently unless you are photographing motion.
+### Temperature Sensors
 
-  # Web server for thermal image viewing (optional)
-  web_server:
-    enable: true
-    path: "/thermal.jpg"
-    quality: 80               # JPEGENC encoding quality 10-100
+Auto-generated sensors for temperature statistics:
 
-  # Auto-generated temperature sensors (optional)
+```yaml
+mlx90640:
   temperature_sensors:
     min:
-      name: "Thermal Min Temperature"
+      name: "Thermal Min"
     max:
-      name: "Thermal Max Temperature"
+      name: "Thermal Max"
     avg:
-      name: "Thermal Average Temperature"
+      name: "Thermal Average"
     roi_min:
-      name: "ROI Min Temperature"
+      name: "ROI Min"
     roi_max:
-      name: "ROI Max Temperature"
+      name: "ROI Max"
     roi_avg:
-      name: "ROI Average Temperature"
-
-  # Auto-generated user controls (optional)
-  update_interval_control:
-    name: "Thermal Update Interval"
-    min_value: 100              # Optional, defaults to 100ms
-    max_value: 30000            # Optional, defaults to 30000ms
-    restore_value: true         # Optional, enables persistence
-
-  thermal_palette_control:
-    name: "Thermal Color Palette"
-    restore_value: true         # Optional, enables/disables persistence
-
-  # ROI configuration (optional)
-  roi:
-    enabled: false
-    center_row: 12
-    center_col: 16
-    size: 2
-
-  # ROI runtime controls (optional)
-  roi_enabled_control:
-    name: "ROI Enabled"
-    restore_mode: RESTORE_DEFAULT_OFF  # Optional, enables persistence
-
-  roi_center_row_control:
-    name: "ROI Center Row"
-    restore_value: true         # Optional, enables persistence
-
-  roi_center_col_control:
-    name: "ROI Center Column"
-    restore_value: true         # Optional, enables persistence
-
-  roi_size_control:
-    name: "ROI Size"
-    restore_value: true         # Optional, enables persistence
+      name: "ROI Average"
 ```
 
-## Configuration Reference
-
-### Hardware Settings (Static)
-In general, you should not change these settings, except `update_interval`. If you
-plan to change any, you must read the Melexis datasheet first to understand the
-implications of changing these. Otherwise, you will impact temperature accuracy.
-
-They are made configurable for folks who understand the repercussions and need to
-change things for specific research purposes.
-- **`refresh_rate`**: `"0.5Hz"` to `"64Hz"` - thermal sensor refresh rate
-- **`resolution`**: `"16-bit"` to `"19-bit"` - thermal sensor precision
-- **`pattern`**: `"chess"` (recommended) or `"interleaved"` - readout pattern
-- **`single_frame`**: `false` (better quality, accuracy) or `true` (faster, less accurate)
-- **`update_interval`**: Static update frequency in milliseconds
-
-### Auto-Generated Sensors
-Configure `temperature_sensors` with any combination of:
-- **`min`**, **`max`**, **`avg`**: Full-frame temperature statistics
-- **`roi_min`**, **`roi_max`**, **`roi_avg`**: ROI-specific temperature statistics
-
-Each sensor supports standard sensor options: `name`, `id`, `accuracy_decimals`, etc.
-
-### Auto-Generated Controls
-Configure user controls with these options:
-- **`update_interval_control`**: Runtime thermal update interval control (Number)
-- **`thermal_palette_control`**: Runtime color palette selection (Select)
-- **`roi_enabled_control`**: Runtime ROI enable/disable (Switch)
-- **`roi_center_row_control`**: Runtime ROI center row adjustment (Number)
-- **`roi_center_col_control`**: Runtime ROI center column adjustment (Number)
-- **`roi_size_control`**: Runtime ROI size adjustment (Number)
-
-Each control supports standard ESPHome options: `name`, `id`, web_server grouping, etc.
-
-### Persistence Options
-- **Number/Select controls**: Use `restore_value: true` to persist changes across reboots
-- **Switch controls**: Use `restore_mode: RESTORE_DEFAULT_OFF/ON` to persist state across reboots
-- **Default behavior**: Without persistence options, controls revert to YAML-configured initial values on reboot
-
-### ROI Configuration
-- **`roi.enabled`**: Initial ROI enable state
-- **`roi.center_row`**: Initial ROI center (1-24)
-- **`roi.center_col`**: Initial ROI center (1-32)
-- **`roi.size`**: Initial ROI size (1-10, creates (2n+1)×(2n+1) square)
-
 ### Web Server
-- **`web_server.enable`**: Enable thermal image HTTP endpoint
-- **`web_server.path`**: Image URL path (default "/thermal.jpg")
-- **`web_server.quality`**: JPEG quality 10-100
+
+HTTP endpoint for thermal images:
+
+```yaml
+mlx90640:
+  web_server:
+    enable: true
+    path: "/thermal.jpg"
+    quality: 85                # JPEG quality 10-100
+    overlay_enabled: true      # Show ROI and temperature overlays
+```
+
+### Region of Interest (ROI)
+
+Configure a specific area for temperature monitoring:
+
+```yaml
+mlx90640:
+  roi:
+    enabled: true
+    center_row: 12             # Row 1-24
+    center_col: 16             # Column 1-32
+    size: 3                    # Creates 7x7 area (2*size+1)
+```
+
+### Runtime Controls
+
+Auto-generated controls for runtime adjustment:
+
+```yaml
+mlx90640:
+  update_interval_control:
+    name: "Update Interval"
+  thermal_palette_control:
+    name: "Color Palette"
+  roi_enabled_control:
+    name: "ROI Enable"
+  roi_center_row_control:
+    name: "ROI Row"
+  roi_center_col_control:
+    name: "ROI Column"
+  roi_size_control:
+    name: "ROI Size"
+  web_overlay_enabled_control:
+    name: "Web Overlay"
+```
+
+All controls persist settings across reboots.
+
+## Configuration Notes
+
+- Factory calibration is for 16Hz, 18-bit resolution, chess pattern
+- Other settings may reduce temperature accuracy
+- Refresh rates above 32Hz may cause hardware issues
+- Single-frame mode reduces accuracy but improves motion performance
+
+## Color Palettes
+
+Available thermal color schemes: `rainbow`, `golden`, `grayscale`, `ironblack`, `cam`, `ironbow`, `arctic`, `lava`, `whitehot`, `blackhot`
 
 ## API for Custom Components
 
-The MLX90640Component provides a clean API for integration with other components:
-
 ```cpp
-#include "esphome/components/mlx90640/mlx90640.h"
+// Get thermal data
+const float *pixels = thermal_camera->get_thermal_pixels();        // 32x24 array
+const float *interpolated = thermal_camera->get_interpolated_pixels(); // 64x48 array
 
-// Access thermal data
-auto thermal = id(thermal_camera);
-const float* pixels = thermal->get_thermal_pixels();      // Raw 32×24 array
-const float* smooth = thermal->get_interpolated_pixels(); // Smooth 64×48 array
-
-// Get temperature statistics
-float min_temp = thermal->get_min_temp();
-float max_temp = thermal->get_max_temp();
-float avg_temp = thermal->get_avg_temp();
+// Temperature statistics
+float min_temp = thermal_camera->get_min_temp();
+float max_temp = thermal_camera->get_max_temp();
+float avg_temp = thermal_camera->get_avg_temp();
 
 // ROI data (when enabled)
-if (thermal->is_roi_enabled()) {
-  float roi_avg = thermal->get_roi_avg_temp();
-  int roi_pixels = thermal->get_roi_pixel_count();
-}
+float roi_min = thermal_camera->get_roi_min_temp();
+float roi_max = thermal_camera->get_roi_max_temp();
+float roi_avg = thermal_camera->get_roi_avg_temp();
+
+// Color mapping
+uint16_t color = thermal_camera->temp_to_color(temperature, min_temp, max_temp);
 ```
-
-## License
-
-This component includes the official Melexis MLX90640 API under Apache License 2.0.
-
-## Contributing
-
-Contributions welcome! This component is designed to be hardware-agnostic and easily extensible.

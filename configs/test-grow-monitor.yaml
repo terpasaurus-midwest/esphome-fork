@@ -153,22 +153,22 @@ m5cores3_power:
 # MLX90640 thermal camera component (now self-contained)
 mlx90640:
   id: thermal_camera
-  refresh_rate: "16Hz"  # Higher performance testing
-  resolution: "18-bit"  # Good balance of precision/speed
-  pattern: "chess"  # Better for even temperature distribution
-  thermal_palette: "ironblack"  # Most intuitive color mapping
-  single_frame: false  # Reduce motion artifacts
-  update_interval: 2000  # Update every 2 seconds
+  refresh_rate: "16Hz" # Higher performance testing
+  resolution: "18-bit" # Good balance of precision/speed
+  pattern: "chess" # Better for even temperature distribution
+  thermal_palette: "ironblack" # Most intuitive color mapping
+  single_frame: false # Reduce motion artifacts
+  update_interval: 2000 # Update every 2 seconds
   web_server:
     enable: true
     path: "/thermal.jpg"
     quality: 90
     web_server_base_id: my_web_server_base
   roi:
-    enabled: false  # Start disabled, user can enable via web interface
-    center_row: 6  # Center of 24 rows (1-24 user range)
-    center_col: 6  # Center of 32 cols (1-32 user range)
-    size: 1  # 5x5 ROI (25 pixels)
+    enabled: false # Start disabled, user can enable via web interface
+    center_row: 6 # Center of 24 rows (1-24 user range)
+    center_col: 6 # Center of 32 cols (1-32 user range)
+    size: 1 # 5x5 ROI (25 pixels)
 
   # Auto-generated temperature sensors
   temperature_sensors:
@@ -263,6 +263,13 @@ mlx90640:
     web_server:
       sorting_group_id: thermal_camera_group
       sorting_weight: 110
+
+  web_overlay_enabled_control:
+    name: "Thermal Overlay Enable"
+    id: thermal_overlay_switch
+    web_server:
+      sorting_group_id: thermal_camera_group
+      sorting_weight: 70
 
 grow_env_monitor:
   id: grow_monitor
@@ -529,7 +536,7 @@ binary_sensor:
   # Light validation - hardware detection only
   - platform: gpio
     pin:
-      number: 9  # Port B digital pin on M5Stack Core S3
+      number: 9 # Port B digital pin on M5Stack Core S3
       mode: INPUT_PULLDOWN
       inverted: true
     name: "Grow Light On"
@@ -538,8 +545,8 @@ binary_sensor:
       sorting_group_id: environmental_monitoring
       sorting_weight: 35
     filters:
-      - delayed_on: 5s  # Debounce for startup
-      - delayed_off: 10s  # Debounce for shutdown
+      - delayed_on: 5s # Debounce for startup
+      - delayed_off: 10s # Debounce for shutdown
 
   # Grow light switch status from Home Assistant
   - platform: homeassistant
@@ -557,7 +564,7 @@ binary_sensor:
       sorting_group_id: environmental_alerts
       sorting_weight: 110
     filters:
-      - delayed_on: 60s  # wait a minute before checking to avoid false positives
+      - delayed_on: 60s # wait a minute before checking to avoid false positives
       - delayed_off: 60s
 
 # Control buttons
