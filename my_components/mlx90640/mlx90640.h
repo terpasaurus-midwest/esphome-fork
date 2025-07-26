@@ -17,6 +17,7 @@
 #ifdef USE_NETWORK
 // Always include JPEGENC for JPEG generation
 #include <JPEGENC.h>
+// Simple text rendering without external dependencies
 #endif
 
 namespace esphome {
@@ -71,6 +72,9 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   void set_web_server_enabled(bool enabled) { web_server_enabled_ = enabled; }
   void set_web_server_path(const std::string &path) { web_server_path_ = path; }
   void set_web_server_quality(int quality) { web_server_quality_ = quality; }
+  void set_web_overlay_enabled(bool enabled) { web_overlay_enabled_ = enabled; }
+  void update_web_overlay_enabled(bool enabled) { web_overlay_enabled_ = enabled; }
+  bool is_web_overlay_enabled() const { return web_overlay_enabled_; }
   void set_web_server_base(web_server_base::WebServerBase *base) { base_ = base; }
 #endif
 
@@ -89,6 +93,7 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   void set_roi_center_row_control(number::Number *control) { roi_center_row_control_ = control; }
   void set_roi_center_col_control(number::Number *control) { roi_center_col_control_ = control; }
   void set_roi_size_control(number::Number *control) { roi_size_control_ = control; }
+  void set_web_overlay_enabled_control(switch_::Switch *control) { web_overlay_enabled_control_ = control; }
 
   // Data access methods for external components
   bool is_initialized() const { return initialized_; }
@@ -119,6 +124,9 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   bool get_roi_overlay_bounds(int image_x, int image_y, int image_w, int image_h, int &roi_x1, int &roi_y1, int &roi_x2,
                               int &roi_y2) const;
   bool get_roi_crosshair_coords(int image_x, int image_y, int image_w, int image_h, int &center_x, int &center_y) const;
+
+  // State synchronization - sync internal roi_config_ with control entity values
+  void sync_roi_state_from_controls();
 
 #ifdef USE_NETWORK
   // Web server thermal image handler
@@ -152,6 +160,8 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   // Web server JPEG generation
   void setup_web_server_();
   void generate_jpg_jpegenc_(AsyncWebServerRequest *request, int width, int height, int quality);
+  void add_roi_overlay_to_image_(std::vector<uint16_t> &image_data, int img_width, int img_height);
+  void add_temperature_text_to_image_(std::vector<uint16_t> &image_data, int img_width, int img_height);
 #endif
 
   // Hardware configuration
@@ -174,6 +184,7 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   bool web_server_enabled_{false};
   std::string web_server_path_{"/thermal.jpg"};
   int web_server_quality_{85};
+  bool web_overlay_enabled_{true};
   web_server_base::WebServerBase *base_;
 #endif
 
@@ -216,6 +227,7 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
   number::Number *roi_center_row_control_{nullptr};
   number::Number *roi_center_col_control_{nullptr};
   number::Number *roi_size_control_{nullptr};
+  switch_::Switch *web_overlay_enabled_control_{nullptr};
 
   // Timing
   uint32_t last_update_time_{0};
@@ -234,7 +246,15 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
 };
 
 // Control type enum for MLX90640 components
-enum MLX90640ControlType { UPDATE_INTERVAL, ROI_CENTER_ROW, ROI_CENTER_COL, ROI_SIZE, THERMAL_PALETTE, ROI_ENABLED };
+enum MLX90640ControlType {
+  UPDATE_INTERVAL,
+  ROI_CENTER_ROW,
+  ROI_CENTER_COL,
+  ROI_SIZE,
+  THERMAL_PALETTE,
+  ROI_ENABLED,
+  WEB_OVERLAY_ENABLED
+};
 
 // MLX90640Number - handles numeric controls (update interval, ROI settings)
 class MLX90640Number : public number::Number, public Component {
@@ -247,6 +267,7 @@ class MLX90640Number : public number::Number, public Component {
   void set_initial_value(float initial_value) { initial_value_ = initial_value; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void control(float value) override;
@@ -269,6 +290,7 @@ class MLX90640Select : public select::Select, public Component {
   void set_initial_option(const std::string &initial_option) { initial_option_ = initial_option; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void control(const std::string &value) override;
@@ -280,19 +302,22 @@ class MLX90640Select : public select::Select, public Component {
   ESPPreferenceObject pref_;
 };
 
-// MLX90640Switch - handles ROI enabled control
+// MLX90640Switch - handles ROI and web overlay enabled controls
 class MLX90640Switch : public switch_::Switch, public Component {
  public:
   void set_mlx90640_parent(MLX90640Component *parent) { parent_ = parent; }
+  void set_control_type(MLX90640ControlType type) { control_type_ = type; }
   void set_restore_mode(switch_::SwitchRestoreMode restore_mode) { this->restore_mode = restore_mode; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void write_state(bool state) override;
 
  private:
   MLX90640Component *parent_{nullptr};
+  MLX90640ControlType control_type_{ROI_ENABLED};
 };
 
 }  // namespace mlx90640

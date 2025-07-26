@@ -1,6 +1,7 @@
 #include "mlx90640.h"
 #include "esphome/core/log.h"
 #include <algorithm>
+#include <cstdio>
 
 namespace esphome {
 namespace mlx90640 {
@@ -14,6 +15,9 @@ void MLX90640Component::setup() {
 
   // Initialize thermal color palette
   set_active_palette_();
+
+  // Sync ROI state from control entities (they have higher setup priority)
+  sync_roi_state_from_controls();
 
 #ifdef USE_NETWORK
   // Setup web server if enabled
@@ -797,6 +801,12 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
     }
   }
 
+  // Add overlays if enabled
+  if (web_overlay_enabled_) {
+    add_roi_overlay_to_image_(image_data, img_width, img_height);
+    add_temperature_text_to_image_(image_data, img_width, img_height);
+  }
+
   // Create smaller JPEG buffer to save memory
   uint8_t *jpg_buffer = (uint8_t *) malloc(16384);  // 16KB buffer
   if (!jpg_buffer) {
@@ -853,7 +863,418 @@ void MLX90640Component::generate_jpg_jpegenc_(AsyncWebServerRequest *request, in
 
   free(jpg_buffer);
 }
+
+void MLX90640Component::add_roi_overlay_to_image_(std::vector<uint16_t> &image_data, int img_width, int img_height) {
+  if (!roi_config_.enabled || !initialized_) {
+    return;
+  }
+
+  // Get ROI overlay bounds for the full image dimensions
+  int roi_display_x1, roi_display_y1, roi_display_x2, roi_display_y2;
+  if (!get_roi_overlay_bounds(0, 0, img_width, img_height, roi_display_x1, roi_display_y1, roi_display_x2,
+                              roi_display_y2)) {
+    return;
+  }
+
+  int roi_width = roi_display_x2 - roi_display_x1;
+  int roi_height = roi_display_y2 - roi_display_y1;
+
+  // Use bright cyan color (RGB565) for good contrast against thermal colors
+  uint16_t roi_color = 0x07FF;  // Bright cyan (RGB565)
+
+  // Draw ROI rectangle border
+  // Top and bottom horizontal lines
+  for (int x = roi_display_x1; x < roi_display_x2 && x < img_width; x++) {
+    if (x >= 0) {
+      // Top line
+      if (roi_display_y1 >= 0 && roi_display_y1 < img_height) {
+        image_data[roi_display_y1 * img_width + x] = roi_color;
+      }
+      // Bottom line
+      if (roi_display_y2 - 1 >= 0 && roi_display_y2 - 1 < img_height) {
+        image_data[(roi_display_y2 - 1) * img_width + x] = roi_color;
+      }
+    }
+  }
+
+  // Left and right vertical lines
+  for (int y = roi_display_y1; y < roi_display_y2 && y < img_height; y++) {
+    if (y >= 0) {
+      // Left line
+      if (roi_display_x1 >= 0 && roi_display_x1 < img_width) {
+        image_data[y * img_width + roi_display_x1] = roi_color;
+      }
+      // Right line
+      if (roi_display_x2 - 1 >= 0 && roi_display_x2 - 1 < img_width) {
+        image_data[y * img_width + (roi_display_x2 - 1)] = roi_color;
+      }
+    }
+  }
+
+  // Draw a second border 1 pixel inset for better visibility (if roi is large enough)
+  if (roi_width > 4 && roi_height > 4) {
+    // Top and bottom horizontal lines (inset)
+    for (int x = roi_display_x1 + 1; x < roi_display_x2 - 1 && x < img_width; x++) {
+      if (x >= 0) {
+        // Top line (inset)
+        if (roi_display_y1 + 1 >= 0 && roi_display_y1 + 1 < img_height) {
+          image_data[(roi_display_y1 + 1) * img_width + x] = roi_color;
+        }
+        // Bottom line (inset)
+        if (roi_display_y2 - 2 >= 0 && roi_display_y2 - 2 < img_height) {
+          image_data[(roi_display_y2 - 2) * img_width + x] = roi_color;
+        }
+      }
+    }
+
+    // Left and right vertical lines (inset)
+    for (int y = roi_display_y1 + 1; y < roi_display_y2 - 1 && y < img_height; y++) {
+      if (y >= 0) {
+        // Left line (inset)
+        if (roi_display_x1 + 1 >= 0 && roi_display_x1 + 1 < img_width) {
+          image_data[y * img_width + (roi_display_x1 + 1)] = roi_color;
+        }
+        // Right line (inset)
+        if (roi_display_x2 - 2 >= 0 && roi_display_x2 - 2 < img_width) {
+          image_data[y * img_width + (roi_display_x2 - 2)] = roi_color;
+        }
+      }
+    }
+  }
+
+  // Draw crosshairs at center point
+  int center_display_x, center_display_y;
+  if (get_roi_crosshair_coords(0, 0, img_width, img_height, center_display_x, center_display_y)) {
+    int crosshair_size = 6;  // Length of crosshair lines in pixels
+
+    // Horizontal crosshair line
+    for (int x = center_display_x - crosshair_size; x <= center_display_x + crosshair_size; x++) {
+      if (x >= 0 && x < img_width && center_display_y >= 0 && center_display_y < img_height) {
+        image_data[center_display_y * img_width + x] = roi_color;
+      }
+    }
+
+    // Vertical crosshair line
+    for (int y = center_display_y - crosshair_size; y <= center_display_y + crosshair_size; y++) {
+      if (y >= 0 && y < img_height && center_display_x >= 0 && center_display_x < img_width) {
+        image_data[y * img_width + center_display_x] = roi_color;
+      }
+    }
+  }
+}
+
+void MLX90640Component::add_temperature_text_to_image_(std::vector<uint16_t> &image_data, int img_width,
+                                                       int img_height) {
+  // Display temperature data with format:
+  // Line 1: "MIN  MAX  AVG" or "MIN  MAX  AVG ROI"
+  // Line 2: "23.3 40.4 34.5 C"
+
+  uint16_t text_color = 0xFFFF;  // White in RGB565
+  int char_width = 4;
+  int char_height = 7;
+  int char_spacing = 1;
+
+  // Helper functions for drawing
+  auto draw_vline = [&](int x, int y, int height) {
+    for (int i = 0; i < height && (y + i) < img_height; i++) {
+      if (x >= 0 && x < img_width && (y + i) >= 0) {
+        image_data[(y + i) * img_width + x] = text_color;
+      }
+    }
+  };
+
+  auto draw_hline = [&](int x, int y, int width) {
+    for (int i = 0; i < width && (x + i) < img_width; i++) {
+      if ((x + i) >= 0 && y >= 0 && y < img_height) {
+        image_data[y * img_width + (x + i)] = text_color;
+      }
+    }
+  };
+
+  auto draw_pixel = [&](int x, int y) {
+    if (x >= 0 && x < img_width && y >= 0 && y < img_height) {
+      image_data[y * img_width + x] = text_color;
+    }
+  };
+
+  // Character renderer - draws character at given position
+  auto draw_char = [&](char c, int x, int y) {
+    switch (c) {
+      case '0':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x, y + 1, 5);
+        draw_vline(x + 2, y + 1, 5);
+        break;
+      case '1':
+        draw_vline(x + 1, y, 7);
+        draw_pixel(x, y + 1);
+        break;
+      case '2':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_pixel(x + 2, y + 1);
+        draw_pixel(x + 2, y + 2);
+        draw_pixel(x, y + 4);
+        draw_pixel(x, y + 5);
+        break;
+      case '3':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_pixel(x + 2, y + 1);
+        draw_pixel(x + 2, y + 2);
+        draw_pixel(x + 2, y + 4);
+        draw_pixel(x + 2, y + 5);
+        break;
+      case '4':
+        draw_vline(x, y, 4);
+        draw_vline(x + 2, y, 7);
+        draw_hline(x, y + 3, 3);
+        break;
+      case '5':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_pixel(x, y + 1);
+        draw_pixel(x, y + 2);
+        draw_pixel(x + 2, y + 4);
+        draw_pixel(x + 2, y + 5);
+        break;
+      case '6':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x, y + 1, 5);
+        draw_pixel(x + 2, y + 4);
+        draw_pixel(x + 2, y + 5);
+        break;
+      case '7':
+        draw_hline(x, y, 3);
+        draw_vline(x + 2, y + 1, 6);
+        break;
+      case '8':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x, y + 1, 5);
+        draw_vline(x + 2, y + 1, 5);
+        break;
+      case '9':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_hline(x, y + 6, 3);
+        draw_pixel(x, y + 1);
+        draw_pixel(x, y + 2);
+        draw_vline(x + 2, y + 1, 5);
+        break;
+      case '.':
+        draw_pixel(x + 1, y + 6);
+        break;
+      case '-':
+        draw_hline(x, y + 3, 3);
+        break;
+      case 'M':
+        draw_vline(x, y, 7);
+        draw_vline(x + 3, y, 7);
+        draw_pixel(x + 1, y + 1);
+        draw_pixel(x + 2, y + 1);
+        break;
+      case 'I':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x + 1, y + 1, 5);
+        break;
+      case 'N':
+        draw_vline(x, y, 7);
+        draw_vline(x + 3, y, 7);
+        draw_pixel(x + 1, y + 2);
+        draw_pixel(x + 2, y + 4);
+        break;
+      case 'A':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_vline(x, y + 1, 6);
+        draw_vline(x + 2, y + 1, 6);
+        break;
+      case 'X':
+        draw_pixel(x, y);
+        draw_pixel(x + 2, y);
+        draw_pixel(x + 1, y + 1);
+        draw_pixel(x + 1, y + 2);
+        draw_pixel(x + 1, y + 3);
+        draw_pixel(x + 1, y + 4);
+        draw_pixel(x + 1, y + 5);
+        draw_pixel(x, y + 6);
+        draw_pixel(x + 2, y + 6);
+        break;
+      case 'V':
+        draw_vline(x, y, 5);
+        draw_vline(x + 2, y, 5);
+        draw_pixel(x + 1, y + 5);
+        draw_pixel(x + 1, y + 6);
+        break;
+      case 'G':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 6, 3);
+        draw_hline(x + 1, y + 3, 2);
+        draw_vline(x, y + 1, 5);
+        draw_pixel(x + 2, y + 4);
+        draw_pixel(x + 2, y + 5);
+        break;
+      case 'C':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x, y + 1, 5);
+        break;
+      case 'R':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 3, 3);
+        draw_vline(x, y, 7);
+        draw_pixel(x + 2, y + 1);
+        draw_pixel(x + 2, y + 2);
+        draw_pixel(x + 1, y + 4);
+        draw_pixel(x + 2, y + 5);
+        draw_pixel(x + 2, y + 6);
+        break;
+      case 'O':
+        draw_hline(x, y, 3);
+        draw_hline(x, y + 6, 3);
+        draw_vline(x, y + 1, 5);
+        draw_vline(x + 2, y + 1, 5);
+        break;
+      case ' ':
+        // Space - do nothing
+        break;
+    }
+  };
+
+  // Get temperature data based on ROI status
+  float min_temp, max_temp, avg_temp;
+  bool show_roi = roi_config_.enabled;
+
+  if (show_roi) {
+    min_temp = get_roi_min_temp();
+    max_temp = get_roi_max_temp();
+    avg_temp = get_roi_avg_temp();
+  } else {
+    min_temp = get_min_temp();
+    max_temp = get_max_temp();
+    avg_temp = get_avg_temp();
+  }
+
+  // Format temperatures to 1 decimal place strings
+  auto format_temp = [](float temp) -> char * {
+    static char buffer[8];
+    int temp_int = (int) (temp * 10);
+    if (temp_int < 0) {
+      temp_int = -temp_int;
+      snprintf(buffer, sizeof(buffer), "-%d.%d", temp_int / 10, temp_int % 10);
+    } else {
+      snprintf(buffer, sizeof(buffer), "%d.%d", temp_int / 10, temp_int % 10);
+    }
+    return buffer;
+  };
+
+  // Position text at top right of image
+  int line1_y = 2;   // Headers line (2 pixels from top)
+  int line2_y = 12;  // Temperature values line (12 pixels from top)
+
+  // Right-aligned columns starting from right edge
+  int col4_x = img_width - 18;  // ROI or rightmost position (18 pixels from right edge)
+  int col3_x = img_width - 38;  // AVG (38 pixels from right edge)
+  int col2_x = img_width - 58;  // MAX (58 pixels from right edge)
+  int col1_x = img_width - 78;  // MIN (78 pixels from right edge)
+
+  // Draw "MIN"
+  draw_char('M', col1_x, line1_y);
+  draw_char('I', col1_x + 5, line1_y);
+  draw_char('N', col1_x + 9, line1_y);
+
+  // Draw "MAX"
+  draw_char('M', col2_x, line1_y);
+  draw_char('A', col2_x + 5, line1_y);
+  draw_char('X', col2_x + 9, line1_y);
+
+  // Draw "AVG"
+  draw_char('A', col3_x, line1_y);
+  draw_char('V', col3_x + 5, line1_y);
+  draw_char('G', col3_x + 9, line1_y);
+
+  // Draw "ROI" if enabled
+  if (show_roi) {
+    draw_char('R', col4_x, line1_y);
+    draw_char('O', col4_x + 5, line1_y);
+    draw_char('I', col4_x + 9, line1_y);
+  }
+
+  // Draw min temp
+  char *min_str = format_temp(min_temp);
+  int min_x = col1_x;
+  for (int i = 0; min_str[i] != '\0'; i++) {
+    draw_char(min_str[i], min_x + i * 4, line2_y);
+  }
+
+  // Draw max temp
+  char *max_str = format_temp(max_temp);
+  int max_x = col2_x;
+  for (int i = 0; max_str[i] != '\0'; i++) {
+    draw_char(max_str[i], max_x + i * 4, line2_y);
+  }
+
+  // Draw avg temp
+  char *avg_str = format_temp(avg_temp);
+  int avg_x = col3_x;
+  for (int i = 0; avg_str[i] != '\0'; i++) {
+    draw_char(avg_str[i], avg_x + i * 4, line2_y);
+  }
+
+  // Draw "C" at the rightmost position (after the values)
+  draw_char('C', col4_x, line2_y);
+}
 #endif  // USE_NETWORK
+
+// State synchronization - sync internal roi_config_ with control entity values
+void MLX90640Component::sync_roi_state_from_controls() {
+  ESP_LOGD(TAG, "Syncing ROI state from control entities");
+
+  // Sync ROI enabled state from switch control
+  if (roi_enabled_control_ != nullptr) {
+    roi_config_.enabled = roi_enabled_control_->state;
+    ESP_LOGD(TAG, "Synced ROI enabled: %s", roi_config_.enabled ? "true" : "false");
+  }
+
+  // Sync ROI center row from number control
+  if (roi_center_row_control_ != nullptr) {
+    int row = static_cast<int>(roi_center_row_control_->state);
+    if (row >= 1 && row <= 24) {
+      roi_config_.center_row = row;
+      ESP_LOGD(TAG, "Synced ROI center row: %d", roi_config_.center_row);
+    }
+  }
+
+  // Sync ROI center column from number control
+  if (roi_center_col_control_ != nullptr) {
+    int col = static_cast<int>(roi_center_col_control_->state);
+    if (col >= 1 && col <= 32) {
+      roi_config_.center_col = col;
+      ESP_LOGD(TAG, "Synced ROI center col: %d", roi_config_.center_col);
+    }
+  }
+
+  // Sync ROI size from number control
+  if (roi_size_control_ != nullptr) {
+    int size = static_cast<int>(roi_size_control_->state);
+    if (size >= 1 && size <= 10) {
+      roi_config_.size = size;
+      ESP_LOGD(TAG, "Synced ROI size: %d", roi_config_.size);
+    }
+  }
+
+  ESP_LOGD(TAG, "ROI state sync complete - enabled=%s, center=(%d,%d), size=%d", roi_config_.enabled ? "true" : "false",
+           roi_config_.center_row, roi_config_.center_col, roi_config_.size);
+}
 
 // MLX90640Number implementation
 void MLX90640Number::setup() {
@@ -902,9 +1323,14 @@ void MLX90640Switch::setup() {
   optional<bool> initial_state = this->get_initial_state_with_restore_mode();
 
   if (initial_state.has_value()) {
-    ESP_LOGD("MLX90640Switch", "Restored ROI enabled state: %s", initial_state.value() ? "ON" : "OFF");
+    const char *control_name = (control_type_ == WEB_OVERLAY_ENABLED) ? "Web overlay enabled" : "ROI enabled";
+    ESP_LOGD("MLX90640Switch", "Restored %s state: %s", control_name, initial_state.value() ? "ON" : "OFF");
     if (parent_ != nullptr) {
-      parent_->update_roi_enabled(initial_state.value());
+      if (control_type_ == WEB_OVERLAY_ENABLED) {
+        parent_->update_web_overlay_enabled(initial_state.value());
+      } else {
+        parent_->update_roi_enabled(initial_state.value());
+      }
     }
     this->publish_state(initial_state.value());
   }
@@ -978,8 +1404,13 @@ void MLX90640Switch::write_state(bool state) {
     return;
   }
 
-  parent_->update_roi_enabled(state);
-  ESP_LOGD("MLX90640Switch", "ROI enabled changed to %s", state ? "true" : "false");
+  if (control_type_ == WEB_OVERLAY_ENABLED) {
+    parent_->update_web_overlay_enabled(state);
+    ESP_LOGD("MLX90640Switch", "Web overlay enabled changed to %s", state ? "true" : "false");
+  } else {
+    parent_->update_roi_enabled(state);
+    ESP_LOGD("MLX90640Switch", "ROI enabled changed to %s", state ? "true" : "false");
+  }
 
   // Update the UI state
   publish_state(state);
