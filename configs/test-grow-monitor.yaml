@@ -41,7 +41,7 @@ esp32:
     type: ${framework_type}
 
 logger:
-  level: VERY_VERBOSE
+  level: WARN
   logs:
     api: WARN
     wifi: WARN

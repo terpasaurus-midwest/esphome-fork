@@ -16,6 +16,9 @@ void MLX90640Component::setup() {
   // Initialize thermal color palette
   set_active_palette_();
 
+  // Sync ROI state from control entities (they have higher setup priority)
+  sync_roi_state_from_controls();
+
 #ifdef USE_NETWORK
   // Setup web server if enabled
   if (web_server_enabled_) {
@@ -1231,6 +1234,47 @@ void MLX90640Component::add_temperature_text_to_image_(std::vector<uint16_t> &im
   draw_char('C', col4_x, line2_y);
 }
 #endif  // USE_NETWORK
+
+// State synchronization - sync internal roi_config_ with control entity values
+void MLX90640Component::sync_roi_state_from_controls() {
+  ESP_LOGD(TAG, "Syncing ROI state from control entities");
+
+  // Sync ROI enabled state from switch control
+  if (roi_enabled_control_ != nullptr) {
+    roi_config_.enabled = roi_enabled_control_->state;
+    ESP_LOGD(TAG, "Synced ROI enabled: %s", roi_config_.enabled ? "true" : "false");
+  }
+
+  // Sync ROI center row from number control
+  if (roi_center_row_control_ != nullptr) {
+    int row = static_cast<int>(roi_center_row_control_->state);
+    if (row >= 1 && row <= 24) {
+      roi_config_.center_row = row;
+      ESP_LOGD(TAG, "Synced ROI center row: %d", roi_config_.center_row);
+    }
+  }
+
+  // Sync ROI center column from number control
+  if (roi_center_col_control_ != nullptr) {
+    int col = static_cast<int>(roi_center_col_control_->state);
+    if (col >= 1 && col <= 32) {
+      roi_config_.center_col = col;
+      ESP_LOGD(TAG, "Synced ROI center col: %d", roi_config_.center_col);
+    }
+  }
+
+  // Sync ROI size from number control
+  if (roi_size_control_ != nullptr) {
+    int size = static_cast<int>(roi_size_control_->state);
+    if (size >= 1 && size <= 10) {
+      roi_config_.size = size;
+      ESP_LOGD(TAG, "Synced ROI size: %d", roi_config_.size);
+    }
+  }
+
+  ESP_LOGD(TAG, "ROI state sync complete - enabled=%s, center=(%d,%d), size=%d", roi_config_.enabled ? "true" : "false",
+           roi_config_.center_row, roi_config_.center_col, roi_config_.size);
+}
 
 // MLX90640Number implementation
 void MLX90640Number::setup() {

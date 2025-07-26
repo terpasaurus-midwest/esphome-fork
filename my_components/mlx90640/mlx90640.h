@@ -125,6 +125,9 @@ class MLX90640Component : public Component, public i2c::I2CDevice {
                               int &roi_y2) const;
   bool get_roi_crosshair_coords(int image_x, int image_y, int image_w, int image_h, int &center_x, int &center_y) const;
 
+  // State synchronization - sync internal roi_config_ with control entity values
+  void sync_roi_state_from_controls();
+
 #ifdef USE_NETWORK
   // Web server thermal image handler
   void handle_thermal_image_request_(AsyncWebServerRequest *request);
@@ -264,6 +267,7 @@ class MLX90640Number : public number::Number, public Component {
   void set_initial_value(float initial_value) { initial_value_ = initial_value; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void control(float value) override;
@@ -286,6 +290,7 @@ class MLX90640Select : public select::Select, public Component {
   void set_initial_option(const std::string &initial_option) { initial_option_ = initial_option; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void control(const std::string &value) override;
@@ -305,6 +310,7 @@ class MLX90640Switch : public switch_::Switch, public Component {
   void set_restore_mode(switch_::SwitchRestoreMode restore_mode) { this->restore_mode = restore_mode; }
 
   void setup() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   void write_state(bool state) override;

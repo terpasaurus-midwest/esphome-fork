@@ -4,8 +4,11 @@
 
 esphome:
   name: thermal-monitor
-  platform: ESP32
+
+esp32:
   board: esp32dev
+  framework:
+    type: arduino
 
 # Required I2C configuration for MLX90640
 i2c:
