@@ -1,26 +1,53 @@
 esphome:
-  name: test-ezo-types
-  friendly_name: Test EZO Types
+  name: atlas-hydro-monitor
+  friendly_name: Atlas Hydro Monitor
 
 esp32:
   board: featheresp32
   framework:
     type: arduino
 
+ota:
+  - platform: esphome
+    password: !secret hydro_monitor_ota_key
+
 external_components:
   - source:
       type: local
-      path: ../components
+      path: ../my_components
+    components: ["ezo_types"]
 
 logger:
   level: DEBUG
 
+captive_portal:
 wifi:
-  ssid: "test_ssid"
-  password: "test_password"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  passive_scan: false
+  power_save_mode: none
+  ap:
+    ssid: "atlas-${device_mac}"
+    password: !secret fallback_hotspot_key
 
 web_server:
+  version: 3
   port: 80
+
+  sorting_groups:
+    - id: ph_circuit
+      name: "pH Circuit"
+      sorting_weight: 10
+    - id: ec_circuit
+      name: "EC Circuit"
+      sorting_weight: 20
+    - id: rtd_circuit
+      name: "RTD Circuit"
+      sorting_weight: 30
+    - id: orp_circuit
+      name: "ORP Circuit"
+      sorting_weight: 40
 
 i2c:
   sda: 23
@@ -28,6 +55,7 @@ i2c:
   scan: true
 
 text_sensor:
+ezo:
 
 sensor:
   - platform: ezo_types
@@ -36,10 +64,21 @@ sensor:
     name: "pH"
     address: 99
     update_interval: 5s
+    accuracy_decimals: 3
+    web_server:
+      sorting_group_id: ph_circuit
     voltage:
       name: "pH Voltage"
+      web_server:
+        sorting_group_id: ph_circuit
     reset_reason:
       name: "pH Reset Reason"
+      web_server:
+        sorting_group_id: ph_circuit
+    firmware_version:
+      name: "pH Firmware Version"
+      web_server:
+        sorting_group_id: ph_circuit
 
   - platform: ezo_types
     type: ec
@@ -47,13 +86,20 @@ sensor:
     name: "EC"
     address: 100
     update_interval: 5s
-    output_tds_enabled: true
+    web_server:
+      sorting_group_id: ec_circuit
     voltage:
       name: "EC Voltage"
+      web_server:
+        sorting_group_id: ec_circuit
     reset_reason:
       name: "EC Reset Reason"
-    tds:
-      name: "TDS"
+      web_server:
+        sorting_group_id: ec_circuit
+    firmware_version:
+      name: "EC Firmware Version"
+      web_server:
+        sorting_group_id: ec_circuit
 
   - platform: ezo_types
     type: rtd
@@ -61,10 +107,20 @@ sensor:
     name: "Temperature"
     address: 102
     update_interval: 5s
+    web_server:
+      sorting_group_id: rtd_circuit
     voltage:
       name: "RTD Voltage"
+      web_server:
+        sorting_group_id: rtd_circuit
     reset_reason:
       name: "RTD Reset Reason"
+      web_server:
+        sorting_group_id: rtd_circuit
+    firmware_version:
+      name: "RTD Firmware Version"
+      web_server:
+        sorting_group_id: rtd_circuit
 
   - platform: ezo_types
     type: orp
@@ -72,7 +128,17 @@ sensor:
     name: "ORP"
     address: 98
     update_interval: 5s
+    web_server:
+      sorting_group_id: orp_circuit
     voltage:
       name: "ORP Voltage"
+      web_server:
+        sorting_group_id: orp_circuit
     reset_reason:
       name: "ORP Reset Reason"
+      web_server:
+        sorting_group_id: orp_circuit
+    firmware_version:
+      name: "ORP Firmware Version"
+      web_server:
+        sorting_group_id: orp_circuit

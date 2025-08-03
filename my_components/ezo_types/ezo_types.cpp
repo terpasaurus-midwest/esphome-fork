@@ -7,44 +7,61 @@ namespace ezo_types {
 
 static const char *const TAG = "ezo_types";
 
-// PHSensor Implementation
-void PHSensor::setup() {
-  EZOSensor::setup();
+static const char *const STATUS_PREFIX = "?STATUS,";
+static const char *const CAL_PREFIX = "?CAL,";
+
+void EZOSensor::setup() {
+  ezo::EZOSensor::setup();
   this->add_custom_callback([this](std::string response) { this->handle_custom_response_(response); });
+  this->add_device_infomation_callback(
+      [this](std::string response) { this->parse_device_information_response_(response); });
+
+  this->send_custom("STATUS");
+  this->get_device_information();
 }
 
-void PHSensor::dump_config() {
-  ESP_LOGCONFIG(TAG, "pH EZO Sensor:");
-  LOG_SENSOR("", "pH", this);
+void EZOSensor::update() {
+  ezo::EZOSensor::update();
+
+  // Send STATUS command periodically to update voltage and reset reason
+  this->send_custom("STATUS");
+
+  // Send device info query occasionally
+  static uint8_t device_info_counter = 0;
+  if (++device_info_counter >= 10) {
+    device_info_counter = 0;
+    this->get_device_information();
+  }
+}
+
+void EZOSensor::dump_config_base_(const char *sensor_type) {
+  ESP_LOGCONFIG(TAG, "%s EZO Sensor:", sensor_type);
+  LOG_SENSOR("", sensor_type, this);
   if (this->voltage_sensor_) {
     LOG_SENSOR("", "Voltage", this->voltage_sensor_);
   }
   if (this->reset_reason_sensor_) {
     LOG_TEXT_SENSOR("", "Reset Reason", this->reset_reason_sensor_);
   }
+  if (this->firmware_version_sensor_) {
+    LOG_TEXT_SENSOR("", "Firmware Version", this->firmware_version_sensor_);
+  }
 }
 
-void PHSensor::handle_custom_response_(const std::string &response) {
-  ESP_LOGI(TAG, "[PH] Custom response: '%s'", response.c_str());
-
-  // Handle ?STATUS,<reason>,<voltage>
-  const std::string status_prefix = "?STATUS,";
-  if (response.rfind(status_prefix, 0) == 0) {
-    this->parse_status_response_(response);
+void EZOSensor::handle_common_responses_(const std::string &response) {
+  if (response.rfind(STATUS_PREFIX, 0) == 0) {
+    this->parse_common_status_response_(response);
     return;
   }
 
-  // Handle calibration status response "?CAL,n"
-  const std::string cal_prefix = "?CAL,";
-  if (response.rfind(cal_prefix, 0) == 0) {
-    this->parse_calibration_response_(response);
+  if (response.rfind(CAL_PREFIX, 0) == 0) {
+    this->parse_common_calibration_response_(response);
     return;
   }
 }
 
-void PHSensor::parse_status_response_(const std::string &response) {
-  const std::string status_prefix = "?STATUS,";
-  std::string payload = response.substr(status_prefix.size());
+void EZOSensor::parse_common_status_response_(const std::string &response) {
+  std::string payload = response.substr(strlen(STATUS_PREFIX));
   size_t delim = payload.find(',');
 
   if (delim != std::string::npos) {
@@ -73,34 +90,49 @@ void PHSensor::parse_status_response_(const std::string &response) {
       this->voltage_sensor_->publish_state(voltage);
     }
 
-    ESP_LOGI(TAG, "[PH] Last Reset: %s | Vcc: %.3f V", reason.c_str(), voltage);
+    ESP_LOGI(TAG, "Last Reset: %s | Vcc: %.3f V", reason.c_str(), voltage);
   } else {
-    ESP_LOGW(TAG, "[PH] Malformed status response: %s", response.c_str());
+    ESP_LOGW(TAG, "Malformed status response: %s", response.c_str());
   }
 }
 
-void PHSensor::parse_calibration_response_(const std::string &response) {
-  const std::string cal_prefix = "?CAL,";
-  std::string cal_state_str = response.substr(cal_prefix.size());
+void EZOSensor::parse_common_calibration_response_(const std::string &response) {
+  std::string cal_state_str = response.substr(strlen(CAL_PREFIX));
   int cal_state = parse_number<int>(cal_state_str).value_or(0);
-  ESP_LOGI(TAG, "[PH] Calibration state: %d", cal_state);
+  ESP_LOGI(TAG, "Calibration state: %d", cal_state);
 }
 
-// ECSensor Implementation
-void ECSensor::setup() {
-  EZOSensor::setup();
-  this->add_custom_callback([this](std::string response) { this->handle_custom_response_(response); });
+void EZOSensor::parse_device_information_response_(const std::string &response) {
+  ESP_LOGI(TAG, "Raw device info: %s", response.c_str());
+
+  if (this->firmware_version_sensor_) {
+    // Parse device info format: "DEVICE,VERSION"
+    size_t delim = response.find(',');
+    if (delim != std::string::npos) {
+      std::string device_type = response.substr(0, delim);
+      std::string firmware_version = response.substr(delim + 1);
+
+      this->firmware_version_sensor_->publish_state(firmware_version);
+      ESP_LOGI(TAG, "Device: %s, Firmware: %s", device_type.c_str(), firmware_version.c_str());
+    } else {
+      // Fallback: if no comma found, publish the whole response
+      this->firmware_version_sensor_->publish_state(response);
+      ESP_LOGW(TAG, "Unexpected device info format: %s", response.c_str());
+    }
+  }
+}
+
+void PHSensor::dump_config() { this->dump_config_base_("pH"); }
+
+void PHSensor::handle_custom_response_(const std::string &response) {
+  ESP_LOGI(TAG, "[PH] Custom response: '%s'", response.c_str());
+
+  // Try common responses first
+  this->handle_common_responses_(response);
 }
 
 void ECSensor::dump_config() {
-  ESP_LOGCONFIG(TAG, "EC EZO Sensor:");
-  LOG_SENSOR("", "EC", this);
-  if (this->voltage_sensor_) {
-    LOG_SENSOR("", "Voltage", this->voltage_sensor_);
-  }
-  if (this->reset_reason_sensor_) {
-    LOG_TEXT_SENSOR("", "Reset Reason", this->reset_reason_sensor_);
-  }
+  this->dump_config_base_("EC");
   if (this->tds_sensor_) {
     LOG_SENSOR("", "TDS", this->tds_sensor_);
   }
@@ -115,24 +147,13 @@ void ECSensor::dump_config() {
 void ECSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[EC] Custom response: '%s'", response.c_str());
 
+  // Try common responses first (STATUS, CAL, etc.)
+  this->handle_common_responses_(response);
+
   // Handle Cell Constant query response "?K,n.n"
   const std::string k_prefix = "?K,";
   if (response.rfind(k_prefix, 0) == 0) {
     this->parse_cell_constant_response_(response);
-    return;
-  }
-
-  // Handle ?STATUS,<reason>,<voltage>
-  const std::string status_prefix = "?STATUS,";
-  if (response.rfind(status_prefix, 0) == 0) {
-    this->parse_status_response_(response);
-    return;
-  }
-
-  // Handle calibration status response "?CAL,n"
-  const std::string cal_prefix = "?CAL,";
-  if (response.rfind(cal_prefix, 0) == 0) {
-    this->parse_calibration_response_(response);
     return;
   }
 
@@ -151,50 +172,6 @@ void ECSensor::handle_custom_response_(const std::string &response) {
   }
 }
 
-void ECSensor::parse_status_response_(const std::string &response) {
-  const std::string status_prefix = "?STATUS,";
-  std::string payload = response.substr(status_prefix.size());
-  size_t delim = payload.find(',');
-
-  if (delim != std::string::npos) {
-    std::string code = payload.substr(0, delim);
-    std::string voltage_str = payload.substr(delim + 1);
-    float voltage = parse_number<float>(voltage_str).value_or(0.0f);
-
-    std::string reason;
-    if (code == "P")
-      reason = "Powered off";
-    else if (code == "S")
-      reason = "Software reset";
-    else if (code == "B")
-      reason = "Brown out";
-    else if (code == "W")
-      reason = "Watchdog";
-    else if (code == "U")
-      reason = "Unknown";
-    else
-      reason = "Unrecognized";
-
-    if (this->reset_reason_sensor_) {
-      this->reset_reason_sensor_->publish_state(reason);
-    }
-    if (this->voltage_sensor_) {
-      this->voltage_sensor_->publish_state(voltage);
-    }
-
-    ESP_LOGI(TAG, "[EC] Last Reset: %s | Vcc: %.3f V", reason.c_str(), voltage);
-  } else {
-    ESP_LOGW(TAG, "[EC] Malformed status response: %s", response.c_str());
-  }
-}
-
-void ECSensor::parse_calibration_response_(const std::string &response) {
-  const std::string cal_prefix = "?CAL,";
-  std::string cal_state_str = response.substr(cal_prefix.size());
-  int cal_state = parse_number<int>(cal_state_str).value_or(0);
-  ESP_LOGI(TAG, "[EC] Calibration state: %d", cal_state);
-}
-
 void ECSensor::parse_cell_constant_response_(const std::string &response) {
   const std::string k_prefix = "?K,";
   std::string cell_constant_str = response.substr(k_prefix.size());
@@ -208,7 +185,6 @@ void ECSensor::parse_output_params_response_(const std::string &response) {
   const std::string output_prefix = "?O,";
   std::string params_str = response.substr(output_prefix.size());
 
-  // Parse enabled parameters
   bool ec_enabled = params_str.find("EC") != std::string::npos;
   bool tds_enabled = params_str.find("TDS") != std::string::npos;
   bool rd_enabled = params_str.find("SG") != std::string::npos;
@@ -224,7 +200,6 @@ void ECSensor::parse_output_params_response_(const std::string &response) {
 }
 
 void ECSensor::parse_multi_value_response_(const std::string &response) {
-  // Split by comma
   std::vector<std::string> values;
   std::string remaining = response;
   size_t pos = 0;
@@ -265,22 +240,7 @@ void ECSensor::parse_multi_value_response_(const std::string &response) {
   }
 }
 
-// RTDSensor Implementation
-void RTDSensor::setup() {
-  EZOSensor::setup();
-  this->add_custom_callback([this](std::string response) { this->handle_custom_response_(response); });
-}
-
-void RTDSensor::dump_config() {
-  ESP_LOGCONFIG(TAG, "RTD EZO Sensor:");
-  LOG_SENSOR("", "RTD", this);
-  if (this->voltage_sensor_) {
-    LOG_SENSOR("", "Voltage", this->voltage_sensor_);
-  }
-  if (this->reset_reason_sensor_) {
-    LOG_TEXT_SENSOR("", "Reset Reason", this->reset_reason_sensor_);
-  }
-}
+void RTDSensor::dump_config() { this->dump_config_base_("RTD"); }
 
 void RTDSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[RTD] Custom response: '%s'", response.c_str());
@@ -293,70 +253,15 @@ void RTDSensor::handle_custom_response_(const std::string &response) {
     return;
   }
 
-  // Handle ?STATUS,<reason>,<voltage>
-  const std::string status_prefix = "?STATUS,";
-  if (response.rfind(status_prefix, 0) == 0) {
-    this->parse_status_response_(response);
-    return;
-  }
-
-  // Handle calibration status response "?CAL,n"
-  const std::string cal_prefix = "?CAL,";
-  if (response.rfind(cal_prefix, 0) == 0) {
-    this->parse_calibration_response_(response);
-    return;
-  }
-
   // Handle datalogger interval response "?D,n"
   const std::string dl_prefix = "?D,";
   if (response.rfind(dl_prefix, 0) == 0) {
     this->parse_datalogger_response_(response);
     return;
   }
-}
 
-void RTDSensor::parse_status_response_(const std::string &response) {
-  const std::string status_prefix = "?STATUS,";
-  std::string payload = response.substr(status_prefix.size());
-  size_t delim = payload.find(',');
-
-  if (delim != std::string::npos) {
-    std::string code = payload.substr(0, delim);
-    std::string voltage_str = payload.substr(delim + 1);
-    float voltage = parse_number<float>(voltage_str).value_or(0.0f);
-
-    std::string reason;
-    if (code == "P")
-      reason = "Powered off";
-    else if (code == "S")
-      reason = "Software reset";
-    else if (code == "B")
-      reason = "Brown out";
-    else if (code == "W")
-      reason = "Watchdog";
-    else if (code == "U")
-      reason = "Unknown";
-    else
-      reason = "Unrecognized";
-
-    if (this->reset_reason_sensor_) {
-      this->reset_reason_sensor_->publish_state(reason);
-    }
-    if (this->voltage_sensor_) {
-      this->voltage_sensor_->publish_state(voltage);
-    }
-
-    ESP_LOGI(TAG, "[RTD] Last Reset: %s | Vcc: %.3f V", reason.c_str(), voltage);
-  } else {
-    ESP_LOGW(TAG, "[RTD] Malformed status response: %s", response.c_str());
-  }
-}
-
-void RTDSensor::parse_calibration_response_(const std::string &response) {
-  const std::string cal_prefix = "?CAL,";
-  std::string cal_state_str = response.substr(cal_prefix.size());
-  int cal_state = parse_number<int>(cal_state_str).value_or(0);
-  ESP_LOGI(TAG, "[RTD] Calibration state: %d", cal_state);
+  // Try common class responses if nothing else returned
+  this->handle_common_responses_(response);
 }
 
 void RTDSensor::parse_temp_scale_response_(const std::string &response) {
@@ -375,39 +280,10 @@ void RTDSensor::parse_datalogger_response_(const std::string &response) {
   ESP_LOGI(TAG, "[RTD] Datalogger %s (interval %d s)", enabled ? "ENABLED" : "DISABLED", interval);
 }
 
-// ORPSensor Implementation
-void ORPSensor::setup() {
-  EZOSensor::setup();
-  this->add_custom_callback([this](std::string response) { this->handle_custom_response_(response); });
-}
-
-void ORPSensor::dump_config() {
-  ESP_LOGCONFIG(TAG, "ORP EZO Sensor:");
-  LOG_SENSOR("", "ORP", this);
-  if (this->voltage_sensor_) {
-    LOG_SENSOR("", "Voltage", this->voltage_sensor_);
-  }
-  if (this->reset_reason_sensor_) {
-    LOG_TEXT_SENSOR("", "Reset Reason", this->reset_reason_sensor_);
-  }
-}
+void ORPSensor::dump_config() { this->dump_config_base_("ORP"); }
 
 void ORPSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[ORP] Custom response: '%s'", response.c_str());
-
-  // Handle ?STATUS,<reason>,<voltage>
-  const std::string status_prefix = "?STATUS,";
-  if (response.rfind(status_prefix, 0) == 0) {
-    this->parse_status_response_(response);
-    return;
-  }
-
-  // Handle calibration status response "?CAL,n"
-  const std::string cal_prefix = "?CAL,";
-  if (response.rfind(cal_prefix, 0) == 0) {
-    this->parse_calibration_response_(response);
-    return;
-  }
 
   // Handle extended-scale response "?ORPEXT,n"
   const std::string ext_prefix = "?ORPEXT,";
@@ -415,50 +291,9 @@ void ORPSensor::handle_custom_response_(const std::string &response) {
     this->parse_extended_scale_response_(response);
     return;
   }
-}
 
-void ORPSensor::parse_status_response_(const std::string &response) {
-  const std::string status_prefix = "?STATUS,";
-  std::string payload = response.substr(status_prefix.size());
-  size_t delim = payload.find(',');
-
-  if (delim != std::string::npos) {
-    std::string code = payload.substr(0, delim);
-    std::string voltage_str = payload.substr(delim + 1);
-    float voltage = parse_number<float>(voltage_str).value_or(0.0f);
-
-    std::string reason;
-    if (code == "P")
-      reason = "Powered off";
-    else if (code == "S")
-      reason = "Software reset";
-    else if (code == "B")
-      reason = "Brown out";
-    else if (code == "W")
-      reason = "Watchdog";
-    else if (code == "U")
-      reason = "Unknown";
-    else
-      reason = "Unrecognized";
-
-    if (this->reset_reason_sensor_) {
-      this->reset_reason_sensor_->publish_state(reason);
-    }
-    if (this->voltage_sensor_) {
-      this->voltage_sensor_->publish_state(voltage);
-    }
-
-    ESP_LOGI(TAG, "[ORP] Last Reset: %s | Vcc: %.3f V", reason.c_str(), voltage);
-  } else {
-    ESP_LOGW(TAG, "[ORP] Malformed status response: %s", response.c_str());
-  }
-}
-
-void ORPSensor::parse_calibration_response_(const std::string &response) {
-  const std::string cal_prefix = "?CAL,";
-  std::string cal_state_str = response.substr(cal_prefix.size());
-  int cal_state = parse_number<int>(cal_state_str).value_or(0);
-  ESP_LOGI(TAG, "[ORP] Calibration state: %d", cal_state);
+  // Try common responses
+  this->handle_common_responses_(response);
 }
 
 void ORPSensor::parse_extended_scale_response_(const std::string &response) {
