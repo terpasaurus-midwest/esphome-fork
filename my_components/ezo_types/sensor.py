@@ -19,10 +19,7 @@ CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_TDS = "tds"
 CONF_SALINITY = "salinity"
 CONF_RELATIVE_DENSITY = "relative_density"
-CONF_OUTPUT_EC_ENABLED = "output_ec_enabled"
-CONF_OUTPUT_TDS_ENABLED = "output_tds_enabled"
-CONF_OUTPUT_SALINITY_ENABLED = "output_salinity_enabled"
-CONF_OUTPUT_RELATIVE_DENSITY_ENABLED = "output_relative_density_enabled"
+
 
 ezo_types_ns = cg.esphome_ns.namespace("ezo_types")
 
@@ -81,12 +78,6 @@ CONFIG_SCHEMA = cv.typed_schema(
                     accuracy_decimals=3,
                     state_class=STATE_CLASS_MEASUREMENT,
                 ),
-                cv.Optional(CONF_OUTPUT_EC_ENABLED, default=True): cv.boolean,
-                cv.Optional(CONF_OUTPUT_TDS_ENABLED, default=False): cv.boolean,
-                cv.Optional(CONF_OUTPUT_SALINITY_ENABLED, default=False): cv.boolean,
-                cv.Optional(
-                    CONF_OUTPUT_RELATIVE_DENSITY_ENABLED, default=False
-                ): cv.boolean,
             }
         )
         .extend(cv.polling_component_schema("60s"))
@@ -157,15 +148,6 @@ async def to_code(config):
         if relative_density_config := config.get(CONF_RELATIVE_DENSITY):
             relative_density_sensor = await sensor.new_sensor(relative_density_config)
             cg.add(var.set_relative_density_sensor(relative_density_sensor))
-
-        cg.add(var.set_output_ec_enabled(config[CONF_OUTPUT_EC_ENABLED]))
-        cg.add(var.set_output_tds_enabled(config[CONF_OUTPUT_TDS_ENABLED]))
-        cg.add(var.set_output_salinity_enabled(config[CONF_OUTPUT_SALINITY_ENABLED]))
-        cg.add(
-            var.set_output_relative_density_enabled(
-                config[CONF_OUTPUT_RELATIVE_DENSITY_ENABLED]
-            )
-        )
 
     elif sensor_type == "rtd":
         pass

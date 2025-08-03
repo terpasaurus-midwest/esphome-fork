@@ -100,6 +100,18 @@ sensor:
       name: "EC Firmware Version"
       web_server:
         sorting_group_id: ec_circuit
+    tds:
+      name: "TDS"
+      web_server:
+        sorting_group_id: ec_circuit
+    salinity:
+      name: "Salinity"
+      web_server:
+        sorting_group_id: ec_circuit
+    relative_density:
+      name: "Relative Density"
+      web_server:
+        sorting_group_id: ec_circuit
 
   - platform: ezo_types
     type: rtd

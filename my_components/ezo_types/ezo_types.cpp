@@ -131,6 +131,55 @@ void PHSensor::handle_custom_response_(const std::string &response) {
   this->handle_common_responses_(response);
 }
 
+void ECSensor::setup() {
+  EZOSensor::setup();  // Call parent setup
+
+  // Configure output parameters based on which sensors are defined
+  // The presence of sensor pointers indicates user wants those outputs
+
+  // Always configure EC output (main sensor)
+  this->send_custom("O,EC,1");
+
+  // Configure TDS output based on whether TDS sensor is defined
+  if (this->tds_sensor_) {
+    this->send_custom("O,TDS,1");
+    this->set_output_tds_enabled(true);
+  } else {
+    this->send_custom("O,TDS,0");
+    this->set_output_tds_enabled(false);
+  }
+
+  // Configure Salinity output based on whether salinity sensor is defined
+  if (this->salinity_sensor_) {
+    this->send_custom("O,S,1");
+    this->set_output_salinity_enabled(true);
+  } else {
+    this->send_custom("O,S,0");
+    this->set_output_salinity_enabled(false);
+  }
+
+  // Configure Specific Gravity (Relative Density) output
+  if (this->relative_density_sensor_) {
+    this->send_custom("O,SG,1");
+    this->set_output_relative_density_enabled(true);
+  } else {
+    this->send_custom("O,SG,0");
+    this->set_output_relative_density_enabled(false);
+  }
+
+  // Query current output parameters to verify configuration
+  this->send_custom("O,?");
+}
+
+void ECSensor::update() {
+  // Call parent update for STATUS and device info
+  EZOSensor::update();
+
+  // Send read command as custom command to get multi-value response
+  // This will go through our custom response handler instead of base sensor
+  this->send_custom("R");
+}
+
 void ECSensor::dump_config() {
   this->dump_config_base_("EC");
   if (this->tds_sensor_) {
@@ -147,8 +196,17 @@ void ECSensor::dump_config() {
 void ECSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[EC] Custom response: '%s'", response.c_str());
 
-  // Try common responses first (STATUS, CAL, etc.)
-  this->handle_common_responses_(response);
+  // Check for STATUS response first - don't process further if it's a STATUS
+  if (response.rfind("?STATUS,", 0) == 0) {
+    this->handle_common_responses_(response);
+    return;
+  }
+
+  // Check for CAL response - don't process further if it's a CAL
+  if (response.rfind("?CAL,", 0) == 0) {
+    this->handle_common_responses_(response);
+    return;
+  }
 
   // Handle Cell Constant query response "?K,n.n"
   const std::string k_prefix = "?K,";

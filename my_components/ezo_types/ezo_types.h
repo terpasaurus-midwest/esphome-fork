@@ -47,6 +47,8 @@ class PHSensor : public EZOSensor {
 
 class ECSensor : public EZOSensor {
  public:
+  void setup() override;
+  void update() override;
   void dump_config() override;
 
   void set_tds_sensor(sensor::Sensor *tds_sensor) { tds_sensor_ = tds_sensor; }
