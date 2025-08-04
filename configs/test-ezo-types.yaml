@@ -79,6 +79,10 @@ sensor:
       name: "pH Firmware Version"
       web_server:
         sorting_group_id: ph_circuit
+    temperature_compensation:
+      name: "pH Temperature Compensation"
+      web_server:
+        sorting_group_id: ph_circuit
 
   - platform: ezo_types
     type: ec
@@ -112,6 +116,10 @@ sensor:
       name: "Relative Density"
       web_server:
         sorting_group_id: ec_circuit
+    temperature_compensation:
+      name: "EC Temperature Compensation"
+      web_server:
+        sorting_group_id: ec_circuit
 
   - platform: ezo_types
     type: rtd
@@ -133,6 +141,16 @@ sensor:
       name: "RTD Firmware Version"
       web_server:
         sorting_group_id: rtd_circuit
+    on_value:
+      then:
+        - lambda: |-
+            // Only send temp compensation if enabled and not in calibration mode
+            if (id(ph_temp_comp_switch).state && !id(ph_cal_mode_switch).state) {
+              id(ph_sensor).set_t(x);
+            }
+            if (id(ec_temp_comp_switch).state && !id(ec_cal_mode_switch).state) {
+              id(ec_sensor).set_t(x);
+            }
 
   - platform: ezo_types
     type: orp
@@ -273,3 +291,81 @@ button:
       sorting_group_id: orp_circuit
     on_press:
       - lambda: 'id(orp_sensor).clear_calibration();'
+
+  # === Temperature Compensation Reset ===
+  - platform: template
+    name: "pH Reset Temp Compensation"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).set_t(25.0);'
+
+  - platform: template
+    name: "EC Reset Temp Compensation"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).set_t(25.0);'
+
+switch:
+  # === Temperature Compensation Control ===
+  - platform: template
+    name: "pH Temp Compensation"
+    id: ph_temp_comp_switch
+    web_server:
+      sorting_group_id: ph_circuit
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(ph_sensor).set_temp_compensation_enabled(true);
+          // Immediately apply current RTD temperature
+          if (!std::isnan(id(rtd_sensor).state)) {
+            id(ph_sensor).set_t(id(rtd_sensor).state);
+          }
+    turn_off_action:
+      - lambda: 'id(ph_sensor).set_temp_compensation_enabled(false);'
+
+  - platform: template
+    name: "EC Temp Compensation"
+    id: ec_temp_comp_switch
+    web_server:
+      sorting_group_id: ec_circuit
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(ec_sensor).set_temp_compensation_enabled(true);
+          // Immediately apply current RTD temperature
+          if (!std::isnan(id(rtd_sensor).state)) {
+            id(ec_sensor).set_t(id(rtd_sensor).state);
+          }
+    turn_off_action:
+      - lambda: 'id(ec_sensor).set_temp_compensation_enabled(false);'
+
+  # === Calibration Mode Control ===
+  - platform: template
+    name: "pH Calibration Mode"
+    id: ph_cal_mode_switch
+    web_server:
+      sorting_group_id: ph_circuit
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(ph_sensor).set_calibration_mode_enabled(true);
+          // Set temperature to 25.0°C for calibration
+          id(ph_sensor).set_t(25.0);
+    turn_off_action:
+      - lambda: 'id(ph_sensor).set_calibration_mode_enabled(false);'
+
+  - platform: template
+    name: "EC Calibration Mode"
+    id: ec_cal_mode_switch
+    web_server:
+      sorting_group_id: ec_circuit
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(ec_sensor).set_calibration_mode_enabled(true);
+          // Set temperature to 25.0°C for calibration
+          id(ec_sensor).set_t(25.0);
+    turn_off_action:
+      - lambda: 'id(ec_sensor).set_calibration_mode_enabled(false);'

@@ -5,8 +5,14 @@ import esphome.config_validation as cv
 from esphome.const import (
     CONF_ID,
     CONF_VOLTAGE,
+    DEVICE_CLASS_CONDUCTIVITY,
+    DEVICE_CLASS_PH,
+    DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_VOLTAGE,
     STATE_CLASS_MEASUREMENT,
+    UNIT_CELSIUS,
+    UNIT_MILLIVOLT,
+    UNIT_PH,
     UNIT_VOLT,
 )
 
@@ -16,6 +22,7 @@ DEPENDENCIES = ["i2c", "ezo"]
 CONF_TYPE = "type"
 CONF_RESET_REASON = "reset_reason"
 CONF_FIRMWARE_VERSION = "firmware_version"
+CONF_TEMPERATURE_COMPENSATION = "temperature_compensation"
 CONF_TDS = "tds"
 CONF_SALINITY = "salinity"
 CONF_RELATIVE_DENSITY = "relative_density"
@@ -46,24 +53,49 @@ def _firmware_version_schema():
     return text_sensor.text_sensor_schema()
 
 
+def _temperature_compensation_sensor_schema():
+    return sensor.sensor_schema(
+        device_class=DEVICE_CLASS_TEMPERATURE,
+        state_class=STATE_CLASS_MEASUREMENT,
+        unit_of_measurement=UNIT_CELSIUS,
+        accuracy_decimals=2,
+    )
+
+
 CONFIG_SCHEMA = cv.typed_schema(
     {
-        "ph": sensor.sensor_schema(PHSensor)
+        "ph": sensor.sensor_schema(
+            PHSensor,
+            unit_of_measurement=UNIT_PH,
+            device_class=DEVICE_CLASS_PH,
+            state_class=STATE_CLASS_MEASUREMENT,
+        )
         .extend(
             {
                 cv.Optional(CONF_VOLTAGE): _voltage_sensor_schema(),
                 cv.Optional(CONF_RESET_REASON): _reset_reason_schema(),
                 cv.Optional(CONF_FIRMWARE_VERSION): _firmware_version_schema(),
+                cv.Optional(
+                    CONF_TEMPERATURE_COMPENSATION
+                ): _temperature_compensation_sensor_schema(),
             }
         )
         .extend(cv.polling_component_schema("60s"))
         .extend(i2c.i2c_device_schema(None)),
-        "ec": sensor.sensor_schema(ECSensor)
+        "ec": sensor.sensor_schema(
+            ECSensor,
+            unit_of_measurement="µS/cm",
+            device_class=DEVICE_CLASS_CONDUCTIVITY,
+            state_class=STATE_CLASS_MEASUREMENT,
+        )
         .extend(
             {
                 cv.Optional(CONF_VOLTAGE): _voltage_sensor_schema(),
                 cv.Optional(CONF_RESET_REASON): _reset_reason_schema(),
                 cv.Optional(CONF_FIRMWARE_VERSION): _firmware_version_schema(),
+                cv.Optional(
+                    CONF_TEMPERATURE_COMPENSATION
+                ): _temperature_compensation_sensor_schema(),
                 cv.Optional(CONF_TDS): sensor.sensor_schema(
                     unit_of_measurement="ppm",
                     accuracy_decimals=0,
@@ -82,7 +114,13 @@ CONFIG_SCHEMA = cv.typed_schema(
         )
         .extend(cv.polling_component_schema("60s"))
         .extend(i2c.i2c_device_schema(None)),
-        "rtd": sensor.sensor_schema(RTDSensor)
+        "rtd": sensor.sensor_schema(
+            RTDSensor,
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=3,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        )
         .extend(
             {
                 cv.Optional(CONF_VOLTAGE): _voltage_sensor_schema(),
@@ -92,7 +130,13 @@ CONFIG_SCHEMA = cv.typed_schema(
         )
         .extend(cv.polling_component_schema("60s"))
         .extend(i2c.i2c_device_schema(None)),
-        "orp": sensor.sensor_schema(ORPSensor)
+        "orp": sensor.sensor_schema(
+            ORPSensor,
+            unit_of_measurement=UNIT_MILLIVOLT,
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_VOLTAGE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        )
         .extend(
             {
                 cv.Optional(CONF_VOLTAGE): _voltage_sensor_schema(),
@@ -126,6 +170,12 @@ async def setup_atlas_sensor_base(var, config):
             firmware_version_config
         )
         cg.add(var.set_firmware_version_sensor(firmware_version_sensor))
+
+    if temperature_compensation_config := config.get(CONF_TEMPERATURE_COMPENSATION):
+        temperature_compensation_sensor = await sensor.new_sensor(
+            temperature_compensation_config
+        )
+        cg.add(var.set_temperature_compensation_sensor(temperature_compensation_sensor))
 
 
 async def to_code(config):

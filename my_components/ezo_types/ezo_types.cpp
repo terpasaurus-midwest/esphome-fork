@@ -23,8 +23,10 @@ void EZOSensor::setup() {
 void EZOSensor::update() {
   ezo::EZOSensor::update();
 
-  // Send STATUS command periodically to update voltage and reset reason
-  this->send_custom("STATUS");
+  // Send STATUS command periodically to update voltage and reset reason (only if sensors configured)
+  if (this->voltage_sensor_ || this->reset_reason_sensor_) {
+    this->send_custom("STATUS");
+  }
 
   // Send device info query occasionally
   static uint8_t device_info_counter = 0;
@@ -124,13 +126,41 @@ void EZOSensor::parse_device_information_response_(const std::string &response) 
 
 void EZOSensor::factory_reset() { this->send_custom("Factory"); }
 
+void PHSensor::update() {
+  // Call parent update first
+  EZOSensor::update();
+
+  // Send temperature compensation query if sensor is configured
+  if (this->temperature_compensation_sensor_) {
+    this->send_custom("T,?");
+  }
+}
+
 void PHSensor::dump_config() { this->dump_config_base_("pH"); }
 
 void PHSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[PH] Custom response: '%s'", response.c_str());
 
+  // Handle temperature compensation response "?T,19.5"
+  const std::string temp_prefix = "?T,";
+  if (response.rfind(temp_prefix, 0) == 0) {
+    this->parse_temperature_compensation_response_(response);
+    return;
+  }
+
   // Try common responses first
   this->handle_common_responses_(response);
+}
+
+void PHSensor::parse_temperature_compensation_response_(const std::string &response) {
+  const std::string temp_prefix = "?T,";
+  std::string temp_str = response.substr(temp_prefix.size());
+  float temperature = parse_number<float>(temp_str).value_or(0.0f);
+
+  if (this->temperature_compensation_sensor_) {
+    this->temperature_compensation_sensor_->publish_state(temperature);
+  }
+  ESP_LOGI(TAG, "[PH] Temperature Compensation: %.2f°C", temperature);
 }
 
 void ECSensor::setup() {
@@ -177,6 +207,11 @@ void ECSensor::update() {
   // Call parent update for STATUS and device info
   EZOSensor::update();
 
+  // Send temperature compensation query if sensor is configured
+  if (this->temperature_compensation_sensor_) {
+    this->send_custom("T,?");
+  }
+
   // Send read command as custom command to get multi-value response
   // This will go through our custom response handler instead of base sensor
   this->send_custom("R");
@@ -209,6 +244,13 @@ void ECSensor::handle_custom_response_(const std::string &response) {
   // Check for CAL response - don't process further if it's a CAL
   if (response.rfind("?CAL,", 0) == 0) {
     this->handle_common_responses_(response);
+    return;
+  }
+
+  // Handle temperature compensation response "?T,19.5"
+  const std::string temp_prefix = "?T,";
+  if (response.rfind(temp_prefix, 0) == 0) {
+    this->parse_temperature_compensation_response_(response);
     return;
   }
 
@@ -302,7 +344,38 @@ void ECSensor::parse_multi_value_response_(const std::string &response) {
   }
 }
 
+void RTDSensor::setup() {
+  // Call parent setup first
+  EZOSensor::setup();
+
+  // Register callback to intercept temperature readings and check for changes
+  this->add_on_state_callback([this](float state) { this->check_temperature_change_(state); });
+}
+
 void RTDSensor::dump_config() { this->dump_config_base_("RTD"); }
+
+void RTDSensor::check_temperature_change_(float new_temp) {
+  // Skip if new temperature is invalid
+  if (std::isnan(new_temp)) {
+    return;
+  }
+
+  // If this is the first reading, store it and trigger callback
+  if (std::isnan(this->last_temp_compensation_value_)) {
+    this->last_temp_compensation_value_ = new_temp;
+    this->temperature_change_callback_.call(new_temp);
+    ESP_LOGI(TAG, "[RTD] Initial temperature compensation: %.2f°C", new_temp);
+    return;
+  }
+
+  // Check if temperature changed by at least the threshold
+  float temp_diff = std::abs(new_temp - this->last_temp_compensation_value_);
+  if (temp_diff >= TEMP_CHANGE_THRESHOLD) {
+    this->last_temp_compensation_value_ = new_temp;
+    this->temperature_change_callback_.call(new_temp);
+    ESP_LOGI(TAG, "[RTD] Temperature compensation update: %.2f°C (change: %.3f°C)", new_temp, temp_diff);
+  }
+}
 
 void RTDSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[RTD] Custom response: '%s'", response.c_str());
@@ -367,6 +440,17 @@ void ORPSensor::parse_extended_scale_response_(const std::string &response) {
   this->extended_scale_callback_.call(enabled);
 
   ESP_LOGI(TAG, "[ORP] Extended scale %s", enabled ? "ENABLED" : "DISABLED");
+}
+
+void ECSensor::parse_temperature_compensation_response_(const std::string &response) {
+  const std::string temp_prefix = "?T,";
+  std::string temp_str = response.substr(temp_prefix.size());
+  float temperature = parse_number<float>(temp_str).value_or(0.0f);
+
+  if (this->temperature_compensation_sensor_) {
+    this->temperature_compensation_sensor_->publish_state(temperature);
+  }
+  ESP_LOGI(TAG, "[EC] Temperature Compensation: %.2f°C", temperature);
 }
 
 }  // namespace ezo_types
