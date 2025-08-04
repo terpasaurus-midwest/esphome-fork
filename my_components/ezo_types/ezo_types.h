@@ -23,6 +23,9 @@ class EZOSensor : public ezo::EZOSensor {
     firmware_version_sensor_ = firmware_version_sensor;
   }
 
+  // Calibration methods
+  void factory_reset();
+
  protected:
   void dump_config_base_(const char *sensor_type);
   void handle_common_responses_(const std::string &response);
@@ -68,6 +71,9 @@ class ECSensor : public EZOSensor {
   void add_output_params_callback(std::function<void(bool, bool, bool, bool)> &&callback) {
     output_params_callback_.add(std::move(callback));
   }
+
+  // EC-specific calibration methods
+  void set_calibration_point_dry();
 
  protected:
   void handle_custom_response_(const std::string &response) override;

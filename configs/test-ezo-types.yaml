@@ -154,3 +154,122 @@ sensor:
       name: "ORP Firmware Version"
       web_server:
         sorting_group_id: orp_circuit
+
+button:
+  # === Factory Reset ===
+  - platform: template
+    name: "pH Factory Reset"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).factory_reset();'
+
+  - platform: template
+    name: "EC Factory Reset"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).factory_reset();'
+
+  - platform: template
+    name: "RTD Factory Reset"
+    web_server:
+      sorting_group_id: rtd_circuit
+    on_press:
+      - lambda: 'id(rtd_sensor).factory_reset();'
+
+  - platform: template
+    name: "ORP Factory Reset"
+    web_server:
+      sorting_group_id: orp_circuit
+    on_press:
+      - lambda: 'id(orp_sensor).factory_reset();'
+
+  # === pH Calibration ===
+  - platform: template
+    name: "pH Cal Mid (7.00)"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).set_calibration_point_mid(7.00);'
+
+  - platform: template
+    name: "pH Cal Low (4.00)"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).set_calibration_point_low(4.00);'
+
+  - platform: template
+    name: "pH Cal High (10.00)"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).set_calibration_point_high(10.00);'
+
+  # === EC Calibration ===
+  - platform: template
+    name: "EC Dry Calibration"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).set_calibration_point_dry();'
+
+  - platform: template
+    name: "EC Cal Low (1413 µS/cm)"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).set_calibration_point_low(1413.0);'
+
+  - platform: template
+    name: "EC Cal High (5000 µS/cm)"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).set_calibration_point_high(5000.0);'
+
+  # === RTD Calibration ===
+  - platform: template
+    name: "RTD Calibration (25.0°C)"
+    web_server:
+      sorting_group_id: rtd_circuit
+    on_press:
+      - lambda: 'id(rtd_sensor).set_calibration_generic(25.0);'
+
+  # === ORP Calibration ===
+  - platform: template
+    name: "ORP Calibration (400 mV)"
+    web_server:
+      sorting_group_id: orp_circuit
+    on_press:
+      - lambda: 'id(orp_sensor).set_calibration_generic(400.0);'
+
+  # === Clear Calibration ===
+  - platform: template
+    name: "pH Clear Calibration"
+    web_server:
+      sorting_group_id: ph_circuit
+    on_press:
+      - lambda: 'id(ph_sensor).clear_calibration();'
+
+  - platform: template
+    name: "EC Clear Calibration"
+    web_server:
+      sorting_group_id: ec_circuit
+    on_press:
+      - lambda: 'id(ec_sensor).clear_calibration();'
+
+  - platform: template
+    name: "RTD Clear Calibration"
+    web_server:
+      sorting_group_id: rtd_circuit
+    on_press:
+      - lambda: 'id(rtd_sensor).clear_calibration();'
+
+  - platform: template
+    name: "ORP Clear Calibration"
+    web_server:
+      sorting_group_id: orp_circuit
+    on_press:
+      - lambda: 'id(orp_sensor).clear_calibration();'

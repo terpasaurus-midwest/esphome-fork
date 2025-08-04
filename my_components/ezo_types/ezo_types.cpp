@@ -122,6 +122,8 @@ void EZOSensor::parse_device_information_response_(const std::string &response) 
   }
 }
 
+void EZOSensor::factory_reset() { this->send_custom("Factory"); }
+
 void PHSensor::dump_config() { this->dump_config_base_("pH"); }
 
 void PHSensor::handle_custom_response_(const std::string &response) {
@@ -192,6 +194,8 @@ void ECSensor::dump_config() {
     LOG_SENSOR("", "Relative Density", this->relative_density_sensor_);
   }
 }
+
+void ECSensor::set_calibration_point_dry() { this->send_custom("Cal,dry"); }
 
 void ECSensor::handle_custom_response_(const std::string &response) {
   ESP_LOGI(TAG, "[EC] Custom response: '%s'", response.c_str());
